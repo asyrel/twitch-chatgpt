@@ -21,9 +21,12 @@
     </form>
   </div>
   <nav>
-    <a href="#/" data-tab="home">Browse</a>
-    <a href="#/favorites" data-tab="favorites">♥ Favorites</a>
-    <a href="#/downloads" data-tab="downloads">⬇ Downloads</a>
+    <a href="#/hentai" data-tab="hentai">Hentai</a>
+    <a href="#/real" data-tab="real">Real</a>
+    <a href="#/manga" data-tab="manga">Manga</a>
+    <a href="#/favorites" data-tab="favorites" aria-label="Favorites">♥</a>
+    <a href="#/downloads" data-tab="downloads" aria-label="Downloads">⬇</a>
+    <a href="#/settings" data-tab="settings" aria-label="Settings">⚙</a>
   </nav>
 </header>
 <main id="app"></main>
@@ -33,15 +36,6 @@
   <div class="progress"><div id="dlfill"></div></div>
 </div>
 
-<div id="viewer">
-  <div class="top">
-    <span id="vcount"></span>
-    <button id="vclose">✕</button>
-  </div>
-  <button class="nav prev" data-step="-1">‹</button>
-  <div id="vmedia"></div>
-  <button class="nav next" data-step="1">›</button>
-</div>
 
 <script type="module" src="app.js"></script>
 </body>

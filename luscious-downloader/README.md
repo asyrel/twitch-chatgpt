@@ -12,8 +12,10 @@ Install on your phone from this link (open it on the phone):
 
 Android will ask you to allow installing apps from your browser the first time. The app runs entirely on the phone, so no computer or server is needed. It can:
 
-- browse and search albums, and view pictures full screen
-- show any user's favorites: enter your profile link (like `https://www.luscious.net/users/123456/`), no password needed
+- separate **Hentai**, **Real** and **Manga** tabs (uses luscious.net's own content types and album types)
+- hide gay (male/male), futa and furry albums by default, plus any tags you choose (Settings ⚙)
+- a manga reader: right-to-left, left-to-right or long strip; tap zones and swipes; pinch and double-tap zoom; fit screen or width; page slider; preloading; keeps the screen on; remembers your page ("Continue reading"); reads saved albums offline
+- show any user's favorites by profile link (like `https://www.luscious.net/users/123456/`), no password needed, filterable by Hentai / Real / Manga
 - save albums to the phone's **Pictures/Luscious** folder (they show up in your gallery), or queue all your favorites at once
 
 The APK is built by GitHub Actions (`.github/workflows/luscious-apk.yml`) on every push that changes `android-app/`. To build it yourself, install Android Studio, then run `npm install && npm run build:apk` in `android-app/`.

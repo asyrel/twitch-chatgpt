@@ -31,10 +31,26 @@ async function postJson(url, body) {
   return data;
 }
 
+// Fields the live API rejected; they're dropped from later queries.
+const unknownFields = new Set();
+function stripFields(query) {
+  let q = query;
+  for (const f of unknownFields) {
+    // Remove "field" or "field { ... }" (one level of nesting is enough for our queries).
+    q = q.replace(new RegExp(`\\b${f}\\s*\\{[^{}]*\\}`, 'g'), '').replace(new RegExp(`\\b${f}\\b(?!\\s*[:(])`, 'g'), '');
+  }
+  return q;
+}
+
 async function gql(operationName, query, variables) {
-  const json = await postJson(`${API}?operationName=${operationName}`, { id: 1, operationName, query, variables });
-  if (json.errors?.length) throw new Error(json.errors.map((e) => e.message).join('; '));
-  return json.data;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const json = await postJson(`${API}?operationName=${operationName}`, { id: 1, operationName, query: stripFields(query), variables });
+    if (!json.errors?.length) return json.data;
+    const bad = json.errors.map((e) => e.message?.match(/Cannot query field ["'](\w+)["']/)?.[1]).filter(Boolean);
+    if (!bad.length || bad.every((f) => unknownFields.has(f))) throw new Error(json.errors.map((e) => e.message).join('; '));
+    bad.forEach((f) => unknownFields.add(f));
+  }
+  throw new Error('Luscious API query failed');
 }
 
 // ---------- parsing ----------
@@ -59,7 +75,7 @@ export function absUrl(u) {
 }
 
 // ---------- queries ----------
-const CARD = 'id title url number_of_pictures number_of_animated_pictures cover { url } tags { text }';
+const CARD = 'id title url number_of_pictures number_of_animated_pictures is_manga cover { url } tags { text } content { id title } audiences { id title } genres { id title }';
 const LIST_QUERY = `query AlbumList($input: AlbumListInput!) {
   album { list(input: $input) {
     info { page has_next_page total_items total_pages }
@@ -68,7 +84,7 @@ const LIST_QUERY = `query AlbumList($input: AlbumListInput!) {
 }`;
 const ALBUM_QUERY = `query AlbumGet($id: ID!) {
   album { get(id: $id) {
-    ... on Album { ${CARD} description created_by { name display_name } language { title } genres { title } }
+    ... on Album { ${CARD} description created_by { name display_name } language { title } }
     ... on MutationError { errors { code message } }
   } }
 }`;
@@ -98,6 +114,9 @@ function normAlbum(a) {
     language: a.language?.title || null,
     tags: (a.tags || []).map((t) => t.text).filter(Boolean),
     genres: (a.genres || []).map((g) => g.title).filter(Boolean),
+    audiences: (a.audiences || []).map((g) => g.title).filter(Boolean),
+    content: a.content?.title || null,
+    isManga: a.is_manga ?? null,
   };
 }
 const errorsOf = (x) => x?.errors?.length && x.errors.map((e) => e.message || e.code).join('; ');
@@ -109,12 +128,59 @@ async function albumList(display, filters, page) {
   return { info: list.info, items: (list.items || []).filter((a) => a?.id).map(normAlbum) };
 }
 
-export const SORTS = ['date_trending', 'date_newest', 'rating_all_time', 'search_score'];
-export function searchAlbums(query, page = 1, sort) {
-  const q = String(query || '').trim();
-  const display = SORTS.includes(sort) ? sort : q ? 'search_score' : 'date_trending';
-  return albumList(display, q ? [{ name: 'search_query', value: q }] : [], page);
+// Content types, audiences and genres (with their ids), as luscious.net defines them.
+const CATEGORIES_QUERY = `query BootStrapMediaCategories {
+  media_categories {
+    content_types { id title }
+    audiences { id title }
+    genres { id title }
+  }
+}`;
+let categoriesPromise = null;
+export function getCategories() {
+  if (!categoriesPromise) {
+    categoriesPromise = (async () => {
+      try {
+        const cached = JSON.parse(localStorage.getItem('ldl_categories') || 'null');
+        if (cached && Date.now() - cached.at < 7 * 864e5) return cached.data;
+      } catch {}
+      const data = await gql('BootStrapMediaCategories', CATEGORIES_QUERY, {});
+      const mc = data?.media_categories || {};
+      const out = { content: mc.content_types || [], audiences: mc.audiences || [], genres: mc.genres || [] };
+      try { localStorage.setItem('ldl_categories', JSON.stringify({ at: Date.now(), data: out })); } catch {}
+      return out;
+    })().catch((e) => { categoriesPromise = null; throw e; });
+  }
+  return categoriesPromise;
 }
+
+export const CONTENT_MATCH = { hentai: /hentai|anime|drawn|cartoon|toon/i, real: /real|photo/i };
+
+// Which content type an album belongs to: 'hentai', 'real', or null if unknown.
+export function contentKind(album) {
+  if (!album.content) return null;
+  if (CONTENT_MATCH.real.test(album.content)) return 'real';
+  if (CONTENT_MATCH.hentai.test(album.content)) return 'hentai';
+  return 'other';
+}
+
+export const SORTS = ['date_trending', 'date_newest', 'rating_all_time', 'search_score'];
+
+// section: 'hentai' | 'real' | 'manga' | null (everything)
+export async function listAlbums({ section = null, q = '', sort = '', page = 1 } = {}) {
+  q = String(q || '').trim();
+  const display = SORTS.includes(sort) ? sort : q ? 'search_score' : 'date_trending';
+  const filters = [{ name: 'album_type', value: section === 'manga' ? 'manga' : 'pictures' }];
+  if (!section) filters.length = 0;
+  if (section === 'hentai' || section === 'real') {
+    const cats = await getCategories().catch(() => null);
+    const ct = cats?.content.find((c) => CONTENT_MATCH[section].test(c.title));
+    if (ct) filters.push({ name: 'content_id', value: String(ct.id) });
+  }
+  if (q) filters.push({ name: 'search_query', value: q });
+  return albumList(display, filters, page);
+}
+export const searchAlbums = (q, page, sort) => listAlbums({ q, page, sort });
 
 export function favoriteAlbums(userId, page = 1) {
   return albumList('date_newest', [{ name: 'favorite_by_user_id', value: String(userId) }], page);
@@ -258,5 +324,21 @@ export async function saveAlbum(album, pictures, { onProgress, signal, concurren
     }
   };
   await Promise.all(Array.from({ length: concurrency }, worker));
-  return { folder: `${target.label}/${folder}`, failed, cancelled: !!signal?.aborted };
+  return {
+    folder: `${target.label}/${folder}`, directory: target.directory, path: `${target.root}/${folder}`,
+    failed, cancelled: !!signal?.aborted,
+  };
+}
+
+// URLs of a saved album's files on the phone, for offline reading. null if not available.
+export async function localUrls(saved, pictures) {
+  if (!FS || !saved?.directory || !saved?.path) return null;
+  try {
+    return await Promise.all(pictures.map(async (p, i) => {
+      const { uri } = await FS.getUri({ path: `${saved.path}/${fileNameFor(p, i, pictures.length)}`, directory: saved.directory });
+      return Cap.convertFileSrc ? Cap.convertFileSrc(uri) : uri;
+    }));
+  } catch {
+    return null;
+  }
 }
