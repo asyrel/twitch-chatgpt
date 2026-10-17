@@ -124,7 +124,7 @@ export function absUrl(u) {
 }
 
 // ---------- queries ----------
-const CARD = 'id title url number_of_pictures number_of_animated_pictures is_manga cover { url } tags { text } content { id title } audiences { id title } genres { id title }';
+const CARD = 'id title url number_of_pictures number_of_animated_pictures is_manga cover { url } tags { text category } content { id title } audiences { id title } genres { id title } created_by { id name display_name }';
 const LIST_QUERY = `query AlbumList($input: AlbumListInput!) {
   album { list(input: $input) {
     info { page has_next_page total_items total_pages }
@@ -133,7 +133,7 @@ const LIST_QUERY = `query AlbumList($input: AlbumListInput!) {
 }`;
 const ALBUM_QUERY = `query AlbumGet($id: ID!) {
   album { get(id: $id) {
-    ... on Album { ${CARD} description created_by { name display_name } language { title } }
+    ... on Album { ${CARD} description language { title } }
     ... on MutationError { errors { code message } }
   } }
 }`;
@@ -160,6 +160,9 @@ function normAlbum(a) {
     animated: a.number_of_animated_pictures ?? 0,
     cover: absUrl(a.cover?.url),
     author: a.created_by?.display_name || a.created_by?.name || null,
+    authorId: a.created_by?.id != null ? String(a.created_by.id) : null,
+    // Artist tags: luscious tags can carry a category ("artist") or be written as "Artist: name".
+    artists: [...new Set((a.tags || []).map((t) => (/artist/i.test(t.category || '') ? t.text : (t.text || '').match(/^artists?\s*:\s*(.+)$/i)?.[1])).filter(Boolean).map((x) => x.trim()))],
     language: a.language?.title || null,
     tags: (a.tags || []).map((t) => t.text).filter(Boolean),
     genres: (a.genres || []).map((g) => g.title).filter(Boolean),
@@ -278,7 +281,7 @@ export function getSortOptions() {
 }
 
 // section: 'hentai' | 'real' | 'manga' | null (everything)
-export async function listAlbums({ section = null, q = '', sort = '', page = 1 } = {}) {
+export async function listAlbums({ section = null, q = '', sort = '', page = 1, creatorId = null } = {}) {
   q = String(q || '').trim();
   const display = /^[a-z0-9_]+$/.test(sort || '') ? sort : q ? 'search_score' : 'date_trending';
   const filters = [{ name: 'album_type', value: section === 'manga' ? 'manga' : 'pictures' }];
@@ -289,9 +292,15 @@ export async function listAlbums({ section = null, q = '', sort = '', page = 1 }
     if (ct) filters.push({ name: 'content_id', value: String(ct.id) });
   }
   if (q) filters.push({ name: 'search_query', value: q });
+  if (creatorId) filters.push({ name: 'created_by_id', value: String(creatorId) });
   return albumList(display, filters, page);
 }
 export const searchAlbums = (q, page, sort) => listAlbums({ q, page, sort });
+
+// Albums uploaded by a user (newest first).
+export function userAlbums(userId, page = 1) {
+  return albumList('date_newest', [{ name: 'created_by_id', value: String(userId) }], page);
+}
 
 export function favoriteAlbums(userId, page = 1) {
   return albumList('date_newest', [{ name: 'favorite_by_user_id', value: String(userId) }], page);
@@ -305,6 +314,7 @@ export async function getProfile(userId) {
     id: String(p.user?.id ?? userId),
     name: p.user?.display_name || p.user?.name || `User ${userId}`,
     favorites: p.number_of_favorite_albums ?? null,
+    albums: p.number_of_albums ?? null,
   };
 }
 

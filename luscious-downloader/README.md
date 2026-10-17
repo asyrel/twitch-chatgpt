@@ -15,6 +15,11 @@ Android will ask you to allow installing apps from your browser the first time. 
 - separate **Hentai**, **Real** and **Manga** tabs (uses luscious.net's own content types and album types)
 - hide gay (male/male), futa and furry albums by default, plus any tags you choose (Settings ⚙)
 - a manga reader: right-to-left, left-to-right or long strip; tap zones and swipes; pinch and double-tap zoom; fit screen or width; page slider; preloading; keeps the screen on; remembers your page ("Continue reading"); reads saved albums offline
+- **artist tools** (📚 Library):
+  - *reference boards*: save single pages into named boards (Poses, Hands, Lighting…), kept offline with a link back to the album and uploader
+  - *drawing study tools* in the viewer: mirror, grayscale, 4-tone value study, proportion grid (3×3 / 4×4 / 6×6), color palette and color picker (hex + HSV)
+  - *gesture drawing practice*: timed random images (30s–10m) from a board, a section or your favorites, with skip/pause, volume-key skip and a session summary
+  - *artist tracking*: follow uploaders or artist tags, see new albums since your last visit, keep private notes per artist
 - show any user's favorites by profile link (like `https://www.luscious.net/users/123456/`), no password needed, filterable by Hentai / Real / Manga
 - save albums to the **SD card** or phone, never shown in the Gallery (Settings ⚙ → Save downloads to):
   - *app folder* on SD card or phone: no setup, but removed if the app is uninstalled (updates are fine)

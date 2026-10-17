@@ -1,4 +1,6 @@
 import { setReading, onVolumeKey } from './native.js';
+import { imageDataUrl } from './api.js';
+import { sheet, toast } from './util.js';
 
 // Full-screen reader for manga and picture albums.
 // Paged (left-to-right / right-to-left) with pinch & double-tap zoom, or a continuous long strip.
@@ -23,7 +25,8 @@ let active = null;
  * pages: [{ src, fallback? }]  start: page index  mode: 'rtl'|'ltr'|'webtoon'
  * onPage(index), onMode(mode), onClose(index)
  */
-export function openReader({ title = '', pages, start = 0, mode = 'ltr', onPage, onMode, onClose }) {
+export function openReader({ title = '', pages, start = 0, mode = 'ltr', onPage, onMode, onClose, onAddToBoard }) {
+  ensureValuesFilter();
   if (active) active.close(true);
   const prefs = readerPrefs();
   const root = document.createElement('div');
@@ -31,12 +34,22 @@ export function openReader({ title = '', pages, start = 0, mode = 'ltr', onPage,
   root.innerHTML = `
     <div class="r-stage"></div>
     <div class="r-pill"></div>
+    <div class="r-swatch" hidden></div>
     <div class="r-menu">
       <div class="r-top">
         <button class="r-close" aria-label="Close">✕</button>
         <div class="r-title">${esc(title)}</div>
       </div>
       <div class="r-bottom">
+        <div class="r-tools">
+          <button data-tool="flip" title="Mirror">⇋<span>Flip</span></button>
+          <button data-tool="gray" title="Grayscale">◐<span>Gray</span></button>
+          <button data-tool="values" title="Value study (4 tones)">▤<span>Values</span></button>
+          <button data-tool="grid" title="Grid">▦<span class="r-gridlbl">Grid</span></button>
+          <button data-tool="palette" title="Color palette">🎨<span>Palette</span></button>
+          <button data-tool="picker" title="Pick a color">💧<span>Picker</span></button>
+          ${onAddToBoard ? '<button data-tool="board" title="Save to a board">＋<span>Board</span></button>' : ''}
+        </div>
         <div class="r-seek"><span class="r-num"></span><input type="range" min="1" step="1"><span class="r-total"></span></div>
         <div class="r-opts">
           <select class="r-mode">${Object.entries(MODES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
@@ -71,8 +84,92 @@ export function openReader({ title = '', pages, start = 0, mode = 'ltr', onPage,
   };
   const pageChanged = (i) => { index = i; updateUi(); onPage?.(i); };
 
+  // ----- drawing study tools -----
+  const study = { flip: false, gray: false, values: false, grid: 0, picker: false };
+  const GRIDS = [0, 3, 4, 6];
+  const applyStudy = () => {
+    root.classList.toggle('flip', study.flip);
+    root.classList.toggle('gray', study.gray && !study.values);
+    root.classList.toggle('values', study.values);
+    root.classList.toggle('grid', study.grid > 0);
+    root.classList.toggle('picking', study.picker);
+    root.style.setProperty('--gn', study.grid || 3);
+    $('.r-gridlbl').textContent = study.grid ? `${study.grid}×${study.grid}` : 'Grid';
+    root.querySelectorAll('[data-tool]').forEach((b) => {
+      const k = b.dataset.tool;
+      b.classList.toggle('on', k === 'grid' ? study.grid > 0 : !!study[k]);
+    });
+    if (!study.picker) $('.r-swatch').hidden = true;
+  };
+  // The image under a screen point, and where in it (0..1), accounting for mirroring.
+  const imageAt = (x, y) => {
+    for (const el of root.querySelectorAll('.r-img, .r-cell.ok img')) {
+      const r = el.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom && r.width > 0) {
+        let nx = (x - r.left) / r.width;
+        if (study.flip) nx = 1 - nx;
+        return { src: el.currentSrc || el.src, nx, ny: (y - r.top) / r.height };
+      }
+    }
+    return null;
+  };
+  const currentSrc = () => {
+    const el = mode === 'webtoon' ? root.querySelector(`.r-cell[data-i="${index}"] img`) : root.querySelector('.r-img');
+    return el?.currentSrc || el?.src || pages[index]?.src;
+  };
+  async function pickAt(x, y) {
+    const hit = imageAt(x, y);
+    const sw = $('.r-swatch');
+    if (!hit) { sw.hidden = true; return; }
+    try {
+      const { ctx, w, h } = await pixelsFor(hit.src);
+      const d = ctx.getImageData(Math.min(w - 1, Math.floor(hit.nx * w)), Math.min(h - 1, Math.floor(hit.ny * h)), 1, 1).data;
+      const hex = toHex(d[0], d[1], d[2]);
+      sw.innerHTML = `<i style="background:${hex}"></i><b>${hex}</b><small>${hsvText(d[0], d[1], d[2])}</small>`;
+      sw.style.left = `${clamp(x - 70, 8, window.innerWidth - 150)}px`;
+      sw.style.top = `${clamp(y - 90, 8, window.innerHeight - 70)}px`;
+      sw.hidden = false;
+      sw.onclick = (e) => { e.stopPropagation(); copy(hex); };
+    } catch {
+      toast("Couldn't read this image's colors");
+    }
+  }
+  async function showPalette() {
+    try {
+      const { ctx, w, h } = await pixelsFor(currentSrc());
+      const colors = palette(ctx.getImageData(0, 0, w, h).data, 8);
+      await sheet(`<h3>Palette · page ${index + 1}</h3>
+        <div class="pal">${colors.map((c) => `<button data-hex="${c.hex}"><i style="background:${c.hex}"></i><b>${c.hex}</b><small>${c.pct}%</small></button>`).join('')}</div>
+        <p class="muted small">Tap a color to copy its code.</p>`, (el, close) => {
+        el.querySelectorAll('[data-hex]').forEach((b) => (b.onclick = () => { copy(b.dataset.hex); close(); }));
+      });
+    } catch {
+      toast("Couldn't read this image's colors");
+    }
+  }
+  root.querySelectorAll('[data-tool]').forEach((b) => (b.onclick = async () => {
+    const k = b.dataset.tool;
+    if (k === 'grid') study.grid = GRIDS[(GRIDS.indexOf(study.grid) + 1) % GRIDS.length];
+    else if (k === 'palette') return showPalette();
+    else if (k === 'board') {
+      const r = await onAddToBoard(index);
+      if (r) toast(`Saved to ${r}`);
+      return;
+    } else if (k === 'picker') {
+      study.picker = !study.picker;
+      if (study.picker) { setMenu(false); toast('Tap the image to pick a color'); }
+    } else study[k] = !study[k];
+    applyStudy();
+    engine.relayout?.();
+  }));
+
   // Taps: left/right thirds turn pages, middle toggles the menu.
-  const tapZone = (x) => {
+  const tapZone = (x, y) => {
+    if (study.picker && !menuOpen) {
+      const w = window.innerWidth;
+      if (x > w * 0.3 && x < w * 0.7 && y > window.innerHeight * 0.85) return setMenu(true);
+      return pickAt(x, y);
+    }
     if (menuOpen) return setMenu(false);
     const w = window.innerWidth;
     if (x > w * 0.3 && x < w * 0.7) return setMenu(true);
@@ -142,6 +239,7 @@ export function openReader({ title = '', pages, start = 0, mode = 'ltr', onPage,
   history.pushState({ reader: 1 }, '');
   window.addEventListener('popstate', onPop);
   applyBg();
+  applyStudy();
   requestWake();
   setReading(true, { keepAwake: prefs.keepAwake, volumeKeys: prefs.volumeKeys, fullscreen: prefs.fullscreen });
   // Volume down = next page, volume up = previous (like most Android manga readers).
@@ -182,8 +280,9 @@ function makeLoader(pages) {
 function pagedEngine({ stage, pages, start, mode, prefs, onChange, onTap }) {
   const loader = makeLoader(pages);
   stage.classList.add('paged');
-  stage.innerHTML = '<img class="r-img" alt=""><div class="r-msg"></div>';
+  stage.innerHTML = '<div class="r-view"><img class="r-img" alt=""><div class="r-grid"></div></div><div class="r-msg"></div>';
   const img = stage.querySelector('.r-img');
+  const grid = stage.querySelector('.r-grid');
   const msg = stage.querySelector('.r-msg');
   let index = start;
   let nw = 1, nh = 1, base = 1, scale = 1, tx = 0, ty = 0, offset = 0;
@@ -202,6 +301,12 @@ function pagedEngine({ stage, pages, start, mode, prefs, onChange, onTap }) {
   const apply = (animate) => {
     img.style.transition = animate ? 'transform .2s ease-out' : 'none';
     img.style.transform = `translate(${tx + offset}px, ${ty}px) scale(${scale})`;
+    grid.style.transition = img.style.transition;
+    grid.style.width = `${nw}px`;
+    grid.style.height = `${nh}px`;
+    grid.style.transform = img.style.transform;
+    grid.style.setProperty('--lw', `${1.25 / scale}px`);
+    grid.style.visibility = img.style.visibility;
   };
   const layout = () => {
     if (!loaded) return;
@@ -220,6 +325,7 @@ function pagedEngine({ stage, pages, start, mode, prefs, onChange, onTap }) {
     onChange(i);
     loaded = false;
     img.style.visibility = 'hidden';
+    grid.style.visibility = 'hidden';
     msg.innerHTML = '<div class="spinner"></div>';
     try {
       const im = await loader.load(i);
@@ -231,6 +337,7 @@ function pagedEngine({ stage, pages, start, mode, prefs, onChange, onTap }) {
       layout();
       if (from) { offset = from; apply(false); img.getBoundingClientRect(); offset = 0; apply(true); }
       img.style.visibility = 'visible';
+      grid.style.visibility = 'visible';
     } catch {
       if (my !== token) return;
       msg.innerHTML = `<div>Couldn't load page ${i + 1}</div><button class="r-retry">Retry</button>`;
@@ -455,4 +562,82 @@ function webtoonEngine({ stage, pages, start, prefs, onChange, onTap }) {
     goTo,
     destroy() { io.disconnect(); off.abort(); cancelAnimationFrame(raf); stage.classList.remove('strip'); },
   };
+}
+
+// ---------- color helpers ----------
+const toHex = (r, g, b) => '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+function hsvText(r, g, b) {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h = Math.round(((h * 60) + 360) % 360);
+  return `H${h} S${max ? Math.round((d / max) * 100) : 0} V${Math.round((max / 255) * 100)}`;
+}
+function copy(text) {
+  navigator.clipboard?.writeText(text).then(() => toast(`Copied ${text}`), () => toast(text));
+}
+
+// Pixel access needs a same-origin image, so remote pages are fetched natively first.
+const pixelCache = new Map();
+function pixelsFor(src) {
+  if (!src) return Promise.reject(new Error('no image'));
+  if (pixelCache.has(src)) return pixelCache.get(src);
+  const p = (async () => {
+    const sameOrigin = src.startsWith('data:') || src.startsWith('blob:') || src.startsWith(location.origin);
+    const url = sameOrigin ? src : await imageDataUrl(src);
+    const im = new Image();
+    im.decoding = 'async';
+    await new Promise((res, rej) => { im.onload = res; im.onerror = rej; im.src = url; });
+    const k = Math.min(1, 900 / Math.max(im.naturalWidth, im.naturalHeight));
+    const w = Math.max(1, Math.round(im.naturalWidth * k)), h = Math.max(1, Math.round(im.naturalHeight * k));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(im, 0, 0, w, h);
+    ctx.getImageData(0, 0, 1, 1); // throws now if the canvas is tainted
+    return { ctx, w, h };
+  })();
+  p.catch(() => pixelCache.delete(src));
+  pixelCache.set(src, p);
+  if (pixelCache.size > 6) pixelCache.delete(pixelCache.keys().next().value);
+  return p;
+}
+
+// Dominant colors with k-means on a sample of pixels (skips near-transparent ones).
+function palette(data, k) {
+  const px = [];
+  const step = Math.max(1, Math.floor(data.length / 4 / 6000));
+  for (let i = 0; i < data.length; i += 4 * step) if (data[i + 3] > 128) px.push([data[i], data[i + 1], data[i + 2]]);
+  if (!px.length) return [];
+  let cents = Array.from({ length: k }, (_, i) => px[Math.floor((i + 0.5) * px.length / k)].slice());
+  let counts = new Array(k).fill(0);
+  for (let it = 0; it < 10; it++) {
+    const sums = cents.map(() => [0, 0, 0]);
+    counts = new Array(k).fill(0);
+    for (const p of px) {
+      let best = 0, bd = Infinity;
+      for (let c = 0; c < k; c++) {
+        const d = (p[0] - cents[c][0]) ** 2 + (p[1] - cents[c][1]) ** 2 + (p[2] - cents[c][2]) ** 2;
+        if (d < bd) { bd = d; best = c; }
+      }
+      sums[best][0] += p[0]; sums[best][1] += p[1]; sums[best][2] += p[2]; counts[best]++;
+    }
+    cents = cents.map((c, i) => (counts[i] ? sums[i].map((v) => v / counts[i]) : c));
+  }
+  return cents.map((c, i) => ({ hex: toHex(...c.map((v) => Math.round(v))), n: counts[i] }))
+    .filter((c) => c.n > 0)
+    .sort((a, b) => b.n - a.n)
+    .map((c) => ({ ...c, pct: Math.max(1, Math.round((c.n / px.length) * 100)) }));
+}
+
+// SVG filter that reduces an image to 4 gray values (for value/notan studies).
+function ensureValuesFilter() {
+  if (document.getElementById('ldl-values')) return;
+  const d = document.createElement('div');
+  d.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+  d.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg"><filter id="ldl-values" color-interpolation-filters="sRGB">
+    <feColorMatrix type="saturate" values="0"/>
+    <feComponentTransfer><feFuncR type="discrete" tableValues="0.08 0.38 0.68 0.95"/><feFuncG type="discrete" tableValues="0.08 0.38 0.68 0.95"/><feFuncB type="discrete" tableValues="0.08 0.38 0.68 0.95"/></feComponentTransfer>
+  </filter></svg>`;
+  document.body.appendChild(d);
 }

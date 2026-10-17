@@ -1,15 +1,11 @@
 import * as L from './api.js';
 import * as N from './native.js';
 import { openReader, closeReader, readerOpen, readerPrefs, saveReaderPrefs, MODES } from './reader.js';
+import { $, app, esc, store, loading, imgTag, fmtBytes } from './util.js';
+import { renderBoards, renderBoard, addToBoard } from './boards.js';
+import { renderPractice } from './gesture.js';
+import { renderArtists, renderArtist, artistHref, checkNew } from './artists.js';
 
-const $ = (s) => document.querySelector(s);
-const app = $('#app');
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const store = {
-  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
-};
-const loading = () => (app.innerHTML = '<div class="center"><div class="spinner"></div></div>');
 function showError(e) {
   const details = e?.details?.length ? `<details><summary>Details</summary><pre class="log">${esc(e.details.join('\n'))}</pre></details>` : '';
   const verify = e?.blocked && N.hasNative
@@ -46,7 +42,6 @@ function hiddenReason(album, p = prefs()) {
 }
 
 // Images load directly; if the site refuses, retry through native HTTP.
-const imgTag = (url) => url ? `<img loading="lazy" referrerpolicy="no-referrer" src="${esc(url)}" data-src="${esc(url)}" alt="">` : '<img alt="">';
 document.addEventListener('error', async (e) => {
   const img = e.target;
   if (img.tagName !== 'IMG' || !img.dataset.src || img.dataset.retried) return;
@@ -55,7 +50,6 @@ document.addEventListener('error', async (e) => {
 }, true);
 
 // ---------- download location ----------
-const fmtBytes = (n) => n == null ? '' : n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.round(n / 1e6)} MB`;
 // { type: 'app', index, label } (private app folder on phone/SD) or { type: 'tree', uri, label } (folder the user picked)
 async function getTarget() {
   const t = store.get('ldl_storage', null);
@@ -262,7 +256,7 @@ function renderFavorites() {
     chipFilter: (a, chip) => chip === 'all' ? true
       : chip === 'manga' ? a.isManga
       : !a.isManga && L.contentKind(a) === chip,
-    header: () => `<div class="chips">${Object.entries(chips).map(([k, v]) => `<button data-chip="${k}" class="${listState.chip === k ? 'on' : ''}">${v}</button>`).join('')}</div>
+    header: () => `${libraryNav('favorites')}<div class="chips">${Object.entries(chips).map(([k, v]) => `<button data-chip="${k}" class="${listState.chip === k ? 'on' : ''}">${v}</button>`).join('')}</div>
       <div class="row"><button id="dlAll">⬇ Download all favorites</button><button id="changeUser">${loginState()?.signedIn ? 'Account' : 'Change account'}</button></div>`,
     onRender() {
       app.querySelectorAll('[data-chip]').forEach((b) => (b.onclick = () => { listState.chip = b.dataset.chip; draw(); }));
@@ -342,7 +336,9 @@ async function renderAlbum(ref) {
         ${imgTag(album.cover)}
         <div style="min-width:0">
           <h1>${esc(album.title)}</h1>
-          <div class="muted small">${album.isManga ? 'Manga · ' : ''}${album.content ? esc(album.content) + ' · ' : ''}${pictures.length} ${album.isManga ? 'pages' : 'files'}${album.author ? ' · ' + esc(album.author) : ''}${album.language ? ' · ' + esc(album.language) : ''}</div>
+          <div class="muted small">${album.isManga ? 'Manga · ' : ''}${album.content ? esc(album.content) + ' · ' : ''}${pictures.length} ${album.isManga ? 'pages' : 'files'}${album.language ? ' · ' + esc(album.language) : ''}</div>
+          ${album.author ? `<div class="small">by ${album.authorId ? `<a class="artist-link" href="${artistHref('user', album.authorId, album.author)}">${esc(album.author)}</a>` : esc(album.author)}</div>` : ''}
+          ${album.artists.length ? `<div class="small">artist: ${album.artists.map((x) => `<a class="artist-link" href="${artistHref('tag', x, x)}">${esc(x)}</a>`).join(', ')}</div>` : ''}
           ${reason ? `<div class="muted small">⚠ Normally hidden (${esc(reason)})</div>` : ''}
           <div class="row">
             <button class="primary" id="read">${readLabel}</button>
@@ -373,6 +369,7 @@ async function startReading(album, pictures, start) {
   const mode = prog?.mode || (album.isManga ? p.mangaMode : 'ltr');
   openReader({
     title: album.title, pages, start, mode,
+    onAddToBoard: (i) => addToBoard(album, pictures[i], i, ctx),
     onPage: (i) => saveProgress(album, i, pictures.length),
     onMode: (m) => saveProgress(album, progressOf(album.id)?.page || 0, pictures.length, { mode: m }),
     onClose: () => { if (location.hash.startsWith('#/album/')) renderAlbum(album.id); },
@@ -453,7 +450,7 @@ async function renderDownloads() {
   const target = await getTarget();
   const label = { done: '✓ Saved', partial: '⚠ Some failed', cancelled: 'Cancelled', error: '✕ Failed' };
   const totO = h.reduce((n, x) => n + (x.originalBytes || 0), 0), totS = h.reduce((n, x) => n + (x.savedBytes || 0), 0);
-  app.innerHTML = `<h2>Downloads</h2>
+  app.innerHTML = `${libraryNav('downloads')}<h2>Downloads</h2>
     ${totO > totS && totS ? `<p class="small">Compression saved <b>${fmtBytes(totO - totS)}</b> (${fmtBytes(totO)} → ${fmtBytes(totS)})</p>` : ''}
     ${active ? `<p>Downloading <b>${esc(active.album.title)}</b>…</p>` : ''}
     ${queue.length ? `<p class="muted">${queue.length} album(s) waiting</p>` : ''}
@@ -562,12 +559,31 @@ async function renderSettings() {
   $('#clearProgress').onclick = (e) => { store.set('ldl_progress', {}); e.target.textContent = 'Cleared'; };
 }
 
+// ---------- library (boards, artists, favorites, downloads) ----------
+let newArtists = 0;
+function libraryNav(active) {
+  const tabs = { boards: '🎨 Boards', artists: `👤 Artists${newArtists ? ` <span class="newbadge">${newArtists}</span>` : ''}`, favorites: '♥ Favorites', downloads: '⬇ Saved' };
+  return `<div class="chips libnav">${Object.entries(tabs).map(([k, v]) => `<a class="chip ${k === active ? 'on' : ''}" href="#/${k}">${v}</a>`).join('')}</div>`;
+}
+const refreshNewBadge = () => checkNew().then((n) => {
+  newArtists = n;
+  $('nav a[data-tab=library]').classList.toggle('dot', n > 0);
+}).catch(() => {});
+
+// Shared helpers handed to the boards / practice / artists screens.
+const ctx = {
+  getTarget, hiddenReason, card, showError, libraryNav,
+  compression: () => prefs().compression,
+  openReader: (o) => openReader(o),
+};
+
 // ---------- router ----------
 function route() {
   if (readerOpen()) closeReader();
   const [, kind = '', a = '', b = ''] = location.hash.split('/');
   if (SECTIONS[kind]) section = kind;
-  const tab = SECTIONS[kind] ? kind : ['favorites', 'downloads', 'settings'].includes(kind) ? kind : kind === 'login' ? 'favorites' : kind === 'album' || kind === 'read' ? null : 'hentai';
+  const LIB = ['library', 'favorites', 'downloads', 'boards', 'board', 'practice', 'artists', 'artist', 'login'];
+  const tab = SECTIONS[kind] ? kind : LIB.includes(kind) ? 'library' : kind === 'settings' ? 'settings' : kind === 'album' || kind === 'read' ? null : 'hentai';
   if (tab) document.querySelectorAll('nav a').forEach((n) => n.classList.toggle('on', n.dataset.tab === tab));
   window.scrollTo(0, 0);
   if (!SECTIONS[kind]) $('#q').value = '';
@@ -578,8 +594,17 @@ function route() {
   if (kind === 'downloads') return renderDownloads();
   if (kind === 'settings') return renderSettings();
   if (kind === 'login') return renderLogin(a ? decodeURIComponent(a) : '#/favorites');
+  if (kind === 'library' || kind === 'boards') return renderBoards(ctx);
+  if (kind === 'board') return renderBoard(a, ctx);
+  if (kind === 'practice') return renderPractice(ctx, a === 'board' && b ? { source: `board:${b}` } : {});
+  if (kind === 'artists') { refreshNewBadge(); return renderArtists(ctx); }
+  if (kind === 'artist') {
+    const [, , type, id, name] = location.hash.split('/');
+    return renderArtist(type, decodeURIComponent(id || ''), decodeURIComponent(name || ''), ctx).then(refreshNewBadge);
+  }
   renderSection(SECTIONS[kind] ? kind : 'hentai', decodeURIComponent(a), b);
 }
 window.addEventListener('hashchange', route);
 L.getCategories().catch(() => {});
 route();
+setTimeout(refreshNewBadge, 4000);
