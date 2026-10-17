@@ -8,21 +8,24 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header>
-  <div class="bar">
-    <form id="search">
-      <input id="q" type="search" placeholder="Search or paste album link…" autocomplete="off" enterkeyhint="search">
-    </form>
-  </div>
-  <nav>
+<header id="browseHeader">
+  <form id="search">
+    <input id="q" type="search" placeholder="Search or paste album link…" autocomplete="off" enterkeyhint="search">
+  </form>
+  <div class="seg" id="sections">
     <a href="#/hentai" data-tab="hentai">Hentai</a>
     <a href="#/art" data-tab="art">Art</a>
     <a href="#/manga" data-tab="manga">Manga</a>
-    <a href="#/library" data-tab="library">Library</a>
-    <a href="#/settings" data-tab="settings" aria-label="Settings">⚙</a>
-  </nav>
+  </div>
 </header>
 <main id="app"></main>
+
+<nav id="tabbar">
+  <a href="#/feed" data-tab="feed"><i>✨</i><span>For You</span></a>
+  <a href="#/browse" data-tab="browse"><i>🔍</i><span>Browse</span></a>
+  <a href="#/library" data-tab="library"><i>📚</i><span>Library</span></a>
+  <a href="#/settings" data-tab="settings"><i>⚙️</i><span>Settings</span></a>
+</nav>
 
 <div id="dlbar" hidden>
   <div class="dlinfo"><span id="dltext"></span><button id="dlcancel">Cancel</button></div>

@@ -194,3 +194,37 @@ async function openBoardReader(board, items, start, ctx) {
     },
   });
 }
+
+// ---------- direct add/remove (used by the For You feed's ♥) ----------
+export const LIKED_BOARD = '♥ Liked';
+function boardByName(name) {
+  const d = loadBoards();
+  return d.boards.find((b) => b.name === name) || createBoard(name);
+}
+export function isInBoard(name, pictureId) {
+  const d = loadBoards();
+  const b = d.boards.find((x) => x.name === name);
+  return !!b && d.items.some((i) => i.boardId === b.id && i.pictureId === pictureId);
+}
+// Adds without asking, and saves the image to the phone in the background.
+export function addToNamedBoard(name, album, picture, index, ctx, extra = {}) {
+  const board = boardByName(name);
+  const d = loadBoards();
+  if (d.items.some((i) => i.boardId === board.id && i.pictureId === picture.id)) return board.name;
+  const item = {
+    id: uid(), boardId: board.id, addedAt: Date.now(),
+    albumId: album.id, albumTitle: album.title, author: album.author, authorId: album.authorId, pageUrl: album.pageUrl || null,
+    page: index, pictureId: picture.id, original: picture.original, large: picture.large || null, thumb: picture.thumb, ...extra,
+  };
+  d.items.push(item);
+  saveBoardsData(d);
+  storeOffline(item, ctx);
+  return board.name;
+}
+export function removeFromNamedBoard(name, pictureId) {
+  const d = loadBoards();
+  const b = d.boards.find((x) => x.name === name);
+  if (!b) return;
+  d.items = d.items.filter((i) => !(i.boardId === b.id && i.pictureId === pictureId));
+  saveBoardsData(d);
+}

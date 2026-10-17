@@ -8,6 +8,8 @@ import { renderArtists, renderArtist, artistHref, checkNew } from './artists.js'
 import { renderRefs, renderRefResults } from './refs.js';
 import { renderArt } from './art.js';
 import * as B from './boorus.js';
+import { renderFeed, renderTaste } from './feed.js';
+import { loadBoards, LIKED_BOARD } from './boards.js';
 
 function showError(e) {
   const details = e?.details?.length ? `<details><summary>Details</summary><pre class="log">${esc(e.details.join('\n'))}</pre></details>` : '';
@@ -347,6 +349,7 @@ async function renderAlbum(ref) {
     const tags = [...album.audiences, ...album.genres, ...album.tags].slice(0, 30);
     const readLabel = prog && prog.page > 0 ? `📖 Continue p. ${prog.page + 1}` : album.isManga ? '📖 Read' : '▶ View';
     app.innerHTML = `
+      <div class="page-head"><button class="back" id="backBtn" aria-label="Back">‹</button><span class="muted small">${album.isManga ? 'Manga' : 'Album'}</span></div>
       <div class="album-head">
         ${imgTag(album.cover)}
         <div style="min-width:0">
@@ -365,6 +368,7 @@ async function renderAlbum(ref) {
       </div>
       <div class="row">${tags.map((t) => `<a class="tag" href="#/${album.isManga ? 'manga' : 'hentai'}/${encodeURIComponent(t)}/">${esc(t)}</a>`).join('')}</div>
       <div class="grid thumbs">${pictures.map((p, i) => `<div class="thumb" data-i="${i}">${imgTag(p.thumb)}<span>${i + 1}</span></div>`).join('')}</div>`;
+    $('#backBtn').onclick = () => (history.length > 1 ? history.back() : (location.hash = '#/browse'));
     $('#read').onclick = () => startReading(album, pictures, prog?.page || 0);
     $('#restart')?.addEventListener('click', () => startReading(album, pictures, 0));
     $('#dl').onclick = (e) => { enqueue(album); e.target.textContent = 'Queued'; e.target.disabled = true; };
@@ -605,7 +609,7 @@ function libraryNav(active) {
 }
 const refreshNewBadge = () => checkNew().then((n) => {
   newArtists = n;
-  $('nav a[data-tab=library]').classList.toggle('dot', n > 0);
+  $('#tabbar a[data-tab=library]').classList.toggle('dot', n > 0);
 }).catch(() => {});
 
 // Shared helpers handed to the boards / practice / artists screens.
@@ -622,8 +626,21 @@ function route() {
   const [, kind = '', a = '', b = ''] = location.hash.split('/');
   if (SECTIONS[kind]) section = kind;
   const LIB = ['library', 'favorites', 'downloads', 'boards', 'board', 'practice', 'artists', 'artist', 'login', 'refs'];
-  const tab = SECTIONS[kind] ? kind : LIB.includes(kind) ? 'library' : kind === 'settings' ? 'settings' : kind === 'album' || kind === 'read' ? null : 'hentai';
-  if (tab) document.querySelectorAll('nav a').forEach((n) => n.classList.toggle('on', n.dataset.tab === tab));
+  const isFeed = kind === '' || kind === 'feed' || kind === 'taste';
+  const tab = isFeed ? 'feed' : LIB.includes(kind) || kind === 'board-liked' ? 'library' : kind === 'settings' ? 'settings' : 'browse';
+  document.querySelectorAll('#tabbar a').forEach((n) => n.classList.toggle('on', n.dataset.tab === tab));
+  if (SECTIONS[kind]) document.querySelectorAll('#sections a').forEach((n) => n.classList.toggle('on', n.dataset.tab === kind));
+  // The search bar only shows while browsing; the feed uses the whole screen.
+  document.body.classList.toggle('browsing', !!SECTIONS[kind] || kind === 'browse');
+  document.body.classList.toggle('feedmode', kind === '' || kind === 'feed');
+  if (kind === '' || kind === 'feed') return renderFeed(ctx);
+  if (kind === 'taste') return renderTaste(ctx);
+  if (kind === 'browse') { location.replace(`#/${store.get('ldl_last_section', 'hentai')}`); return; }
+  if (SECTIONS[kind]) store.set('ldl_last_section', kind);
+  if (kind === 'board-liked') {
+    const liked = loadBoards().boards.find((x) => x.name === LIKED_BOARD);
+    return liked ? renderBoard(liked.id, ctx) : renderBoards(ctx);
+  }
   window.scrollTo(0, 0);
   if (!SECTIONS[kind] || kind === 'art') $('#q').value = '';
   $('#q').placeholder = SECTIONS[section]?.placeholder || '';

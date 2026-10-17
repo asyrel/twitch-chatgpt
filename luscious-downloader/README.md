@@ -12,6 +12,8 @@ Install on your phone from this link (open it on the phone):
 
 Android will ask you to allow installing apps from your browser the first time. The app runs entirely on the phone, so no computer or server is needed. It can:
 
+- **✨ For You** (opens first): an endless swipe feed that learns your taste on the phone. ♥ (or double-tap) to like, 👎 for less, or just swipe; lingering counts a little too. Liked images go to the **♥ Liked** board and are saved offline. "Your taste" shows what it learned and lets you boost, reduce, block or forget tags
+- bottom tab bar: For You · Browse · Library · Settings
 - **Hentai**, **Art** and **Manga** tabs. Art searches anime/hentai image boards (Danbooru, Gelbooru, Yande.re, Konachan) by tags. Real-life photos are never shown, and content involving minors is always blocked on every site
 - hide gay (male/male), futa and furry albums by default, plus any tags you choose (Settings ⚙)
 - a manga reader: right-to-left, left-to-right or long strip; tap zones and swipes; pinch and double-tap zoom; fit screen or width; page slider; preloading; keeps the screen on; remembers your page ("Continue reading"); reads saved albums offline
