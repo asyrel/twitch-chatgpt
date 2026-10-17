@@ -15,13 +15,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  # Automated tests run first; a failing test stops the APK from being published.
+  test:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: luscious-downloader/android-app
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Run tests
+        run: npm test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: luscious-downloader/android-app
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 30
 
       - uses: actions/setup-node@v4
         with:
@@ -58,8 +79,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Release notes: the latest changes to the app.
+          {
+            echo "Latest Android build of Miwaku (build ${{ github.run_number }}). Download Miwaku.apk on your phone and open it to install."
+            echo
+            echo "### Recent changes"
+            git log -15 --pretty='- %s' -- luscious-downloader/android-app .github/workflows
+          } > notes.md
           gh release delete miwaku-latest --yes --cleanup-tag || true
           gh release create miwaku-latest Miwaku.apk \
             --target "$GITHUB_SHA" \
             --title "Miwaku for Android (build ${{ github.run_number }})" \
-            --notes "Latest Android build of Miwaku from \`${GITHUB_REF_NAME}\`. Download Miwaku.apk on your phone and open it to install."
+            --notes-file notes.md

@@ -5,13 +5,16 @@
   "description": "Android app (Capacitor) to browse and download luscious.net albums.",
   "scripts": {
     "sync": "cap sync android",
-    "build:apk": "cap sync android && cd android && ./gradlew assembleRelease"
+    "build:apk": "cap sync android && cd android && ./gradlew assembleRelease",
+    "test": "node --test --test-concurrency=1 tests/app.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",
     "@capacitor/core": "8.5.2"
   },
   "devDependencies": {
-    "@capacitor/cli": "8.5.2"
+    "@capacitor/cli": "8.5.2",
+    "playwright": "1.56.1",
+    "graphql": "16.14.1"
   }
 }

@@ -43,7 +43,7 @@ async function postOnce(url, body) {
     Referer: origin + '/',
   };
   if (Http) {
-    const r = await Http.request({ url, method: 'POST', data: body, headers, responseType: 'text' });
+    const r = await Http.request({ url, method: 'POST', data: body, headers, responseType: 'text', connectTimeout: 15000, readTimeout: 30000 });
     const h = Object.fromEntries(Object.entries(r.headers || {}).map(([k, v]) => [k.toLowerCase(), String(v)]));
     return { status: r.status, text: typeof r.data === 'string' ? r.data : JSON.stringify(r.data), headers: h };
   }
@@ -81,17 +81,22 @@ async function postJson(path, body) {
 }
 
 // Plain GET returning JSON (used for the art sites). Goes through native HTTP in the app.
-export async function getJson(url, headers = {}) {
+export async function getJson(url, headers = {}, retry = true) {
   const h = { Accept: 'application/json', 'User-Agent': UA, ...headers };
   let status, text;
   if (Http) {
-    const r = await Http.request({ url, method: 'GET', headers: h, responseType: 'text' });
+    const r = await Http.request({ url, method: 'GET', headers: h, responseType: 'text', connectTimeout: 15000, readTimeout: 30000 });
     status = r.status;
     text = typeof r.data === 'string' ? r.data : JSON.stringify(r.data);
   } else {
     const r = await fetch(url);
     status = r.status;
     text = await r.text();
+  }
+  // Too many requests: wait a moment and try once more.
+  if ((status === 429 || status === 503) && retry) {
+    await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1000));
+    return getJson(url, headers, false);
   }
   let json = null;
   try { json = text ? JSON.parse(text) : null; } catch {}
@@ -637,7 +642,7 @@ export async function getAllPictures(albumId, onProgress, maxPages = 1000) {
 // Loads an image as a data: URL through native HTTP (used if the <img> tag can't load it directly).
 export async function imageDataUrl(url) {
   if (!Http) return url;
-  const r = await Http.request({ url, method: 'GET', responseType: 'blob', headers: { 'User-Agent': UA, Referer: SITE + '/' } });
+  const r = await Http.request({ url, method: 'GET', responseType: 'blob', headers: { 'User-Agent': UA, Referer: SITE + '/' }, connectTimeout: 15000, readTimeout: 60000 });
   if (r.status >= 400) throw new Error(`HTTP ${r.status}`);
   const type = r.headers?.['Content-Type'] || r.headers?.['content-type'] || 'image/jpeg';
   return `data:${type};base64,${r.data}`;

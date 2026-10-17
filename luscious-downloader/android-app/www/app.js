@@ -12,6 +12,7 @@ import { renderFeed, renderTaste } from './feed.js';
 import { loadBoards, LIKED_BOARD } from './boards.js';
 import { renderSimilar, showSimilar } from './similar.js';
 import { renderCheck } from './diag.js';
+import { needsOnboarding, renderOnboarding, renderHelp } from './onboarding.js';
 
 function showError(e) {
   const details = e?.details?.length ? `<details><summary>Details</summary><pre class="log">${esc(e.details.join('\n'))}</pre></details>` : '';
@@ -495,7 +496,7 @@ async function renderSettings() {
   const target = await getTarget();
   const vols = await N.getVolumes().catch(() => []);
   app.innerHTML = `<h2>Settings</h2>
-    <a class="btn primary checkbtn" href="#/check">🩺 Connection check</a>
+    <div class="row" style="margin-top:0"><a class="btn primary checkbtn" href="#/check">🩺 Connection check</a><a class="btn checkbtn" href="#/help">❓ Help & tips</a></div>
     <div class="box">
       <h3>Save downloads to</h3>
       ${N.hasNative ? `
@@ -618,7 +619,7 @@ const refreshNewBadge = () => checkNew().then((n) => {
 
 // Shared helpers handed to the boards / practice / artists screens.
 const ctx = {
-  getTarget, hiddenReason, card, showError, libraryNav,
+  getTarget, hiddenReason, card, showError, libraryNav, prefs, setPrefs, HIDE_RULES, route: () => route(),
   compression: () => prefs().compression,
   openReader: (o) => openReader(o),
 };
@@ -628,6 +629,10 @@ function route() {
   if (readerOpen()) closeReader();
   listState = null; // any list still loading must not draw over the new screen
   const [, kind = '', a = '', b = ''] = location.hash.split('/');
+  if (needsOnboarding()) {
+    document.body.classList.remove('browsing', 'feedmode');
+    return renderOnboarding(ctx);
+  }
   if (SECTIONS[kind]) section = kind;
   const LIB = ['library', 'favorites', 'downloads', 'boards', 'board', 'practice', 'artists', 'artist', 'login', 'refs'];
   const isFeed = kind === '' || kind === 'feed' || kind === 'taste';
@@ -641,6 +646,7 @@ function route() {
   if (kind === 'taste') return renderTaste(ctx);
   if (kind === 'similar') return renderSimilar(ctx);
   if (kind === 'check') return renderCheck(ctx);
+  if (kind === 'help') return renderHelp();
   if (kind === 'browse') { location.replace(`#/${store.get('ldl_last_section', 'hentai')}`); return; }
   if (SECTIONS[kind]) store.set('ldl_last_section', kind);
   if (kind === 'board-liked') {
