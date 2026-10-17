@@ -289,6 +289,154 @@ export async function currentUser() {
   return null;
 }
 
+// ---------- sign in (native form, no browser) ----------
+// luscious.net doesn't document its login, so find the login mutation the website uses in the API schema.
+const TYPE_REF = 'kind name ofType { kind name ofType { kind name ofType { kind name } } }';
+const FULL_TYPE_Q = `query LdlFullType($name: String!) { __type(name: $name) { name kind
+  fields { name args { name type { ${TYPE_REF} } } type { ${TYPE_REF} } }
+  inputFields { name type { ${TYPE_REF} } } possibleTypes { name } } }`;
+const typeCache = new Map();
+async function fullType(name) {
+  if (!name) return null;
+  if (!typeCache.has(name)) typeCache.set(name, gql('LdlFullType', FULL_TYPE_Q, { name }).then((d) => d?.__type || null).catch(() => null));
+  return typeCache.get(name);
+}
+const isRequired = (t) => t?.kind === 'NON_NULL';
+function typeString(t) {
+  if (t.kind === 'NON_NULL') return typeString(t.ofType) + '!';
+  if (t.kind === 'LIST') return `[${typeString(t.ofType)}]`;
+  return t.name;
+}
+function credentialFor(name, login, password) {
+  if (/pass/i.test(name)) return password;
+  if (/^(login|username|user_name|user|email|name|identifier|login_or_email|email_or_username)$/i.test(name)) return login;
+  if (/remember/i.test(name)) return true;
+  return undefined;
+}
+async function loginArgs(field, login, password) {
+  const values = {};
+  for (const a of field.args) {
+    const nt = named(a.type);
+    if (nt.kind === 'INPUT_OBJECT') {
+      const it = await fullType(nt.name);
+      const obj = {};
+      for (const f of it?.inputFields || []) {
+        const v = credentialFor(f.name, login, password);
+        if (v !== undefined) obj[f.name] = v;
+        else if (isRequired(f.type)) return null;
+      }
+      values[a.name] = obj;
+    } else {
+      const v = credentialFor(a.name, login, password);
+      if (v !== undefined) values[a.name] = v;
+      else if (isRequired(a.type)) return null;
+    }
+  }
+  return JSON.stringify(values).includes(JSON.stringify(password)) ? values : null;
+}
+const SAFE = /^(__typename|id|name|display_name|username|code|message|field|token|success|ok|status)$/;
+async function selectionFor(typeName, depth = 2) {
+  const t = await fullType(typeName);
+  if (!t || t.kind === 'SCALAR' || t.kind === 'ENUM') return '';
+  if (t.kind === 'UNION' || t.kind === 'INTERFACE') {
+    const parts = ['__typename'];
+    for (const pt of t.possibleTypes || []) {
+      const sel = await selectionFor(pt.name, depth);
+      if (sel) parts.push(`... on ${pt.name} ${sel}`);
+    }
+    return `{ ${parts.join(' ')} }`;
+  }
+  const parts = ['__typename'];
+  for (const f of t.fields || []) {
+    if (f.args.some((a) => isRequired(a.type))) continue;
+    const nt = named(f.type);
+    if ((nt.kind === 'SCALAR' || nt.kind === 'ENUM') && SAFE.test(f.name)) parts.push(f.name);
+    else if (depth > 1 && /^(errors|user)$/.test(f.name) && nt.kind !== 'SCALAR') {
+      const sel = await selectionFor(nt.name, depth - 1);
+      if (sel) parts.push(`${f.name} ${sel}`);
+    }
+  }
+  return `{ ${parts.join(' ')} }`;
+}
+function collectErrors(v, out = []) {
+  if (!v || typeof v !== 'object') return out;
+  if (Array.isArray(v)) { v.forEach((x) => collectErrors(x, out)); return out; }
+  if (Array.isArray(v.errors)) v.errors.forEach((e) => out.push(e?.message || e?.code || String(e)));
+  if (v.success === false || v.ok === false) out.push(v.message || 'Sign-in failed');
+  for (const [k, x] of Object.entries(v)) if (k !== 'errors') collectErrors(x, out);
+  return out;
+}
+async function loginViaApi(login, password, log) {
+  const root = (await gql('LdlRoots2', 'query LdlRoots2 { __schema { mutationType { name } } }', {}))?.__schema?.mutationType?.name;
+  if (!root) throw new Error('no mutations');
+  const rootType = await fullType(root);
+  const candidates = [];
+  const isLogin = (n) => /^(login|log_in|sign_in|signin|authenticate|token_auth|obtain_token)$/i.test(n) || /login/i.test(n);
+  for (const f of rootType?.fields || []) {
+    if (isLogin(f.name)) candidates.push({ path: [f.name], field: f });
+    const nt = named(f.type);
+    if (nt?.kind === 'OBJECT' && !f.args.length) {
+      const ns = await fullType(nt.name);
+      for (const g of ns?.fields || []) if (isLogin(g.name)) candidates.push({ path: [f.name, g.name], field: g });
+    }
+  }
+  if (!candidates.length) throw new Error('no login operation found');
+  candidates.sort((a, b) => a.field.name.length - b.field.name.length);
+  for (const c of candidates) {
+    const args = await loginArgs(c.field, login, password);
+    if (!args) { log.push(`${c.path.join('.')}: unknown arguments`); continue; }
+    const decls = c.field.args.filter((a) => a.name in args).map((a) => `$${a.name}: ${typeString(a.type)}`);
+    const call = c.field.args.filter((a) => a.name in args).map((a) => `${a.name}: $${a.name}`);
+    let body = `${c.path.at(-1)}(${call.join(', ')}) ${await selectionFor(named(c.field.type).name)}`;
+    for (let i = c.path.length - 2; i >= 0; i--) body = `${c.path[i]} { ${body} }`;
+    const json = await postJson('?operationName=LdlLogin', { id: 1, operationName: 'LdlLogin', query: `mutation LdlLogin(${decls.join(', ')}) { ${body} }`, variables: args });
+    const result = c.path.reduce((o, k) => o?.[k], json.data);
+    const errors = [...(json.errors || []).map((e) => e.message), ...collectErrors(result)];
+    log.push(`${c.path.join('.')}: ${errors.length ? errors.join('; ') : 'ok'}`);
+    if (errors.length) throw Object.assign(new Error(errors[0]), { fromSite: true });
+    return true;
+  }
+  throw new Error('no usable login operation');
+}
+// Older luscious.net (Django) login form, used if the API has no login operation.
+async function loginViaForm(login, password, log) {
+  if (!Http) throw new Error('form login needs the app');
+  for (const path of ['/accounts/login/', '/login/']) {
+    const url = SITE + path;
+    const page = await Http.request({ url, method: 'GET', headers: { 'User-Agent': UA }, responseType: 'text' });
+    if (page.status === 404) { log.push(`form ${path}: 404`); continue; }
+    const html = typeof page.data === 'string' ? page.data : '';
+    const token = html.match(/name=["']csrfmiddlewaretoken["']\s+value=["']([^"']+)/)?.[1];
+    const form = new URLSearchParams({ login, username: login, email: login, password, remember: 'on' });
+    if (token) form.set('csrfmiddlewaretoken', token);
+    const r = await Http.request({
+      url, method: 'POST', data: form.toString(), responseType: 'text',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': UA, Origin: SITE, Referer: url },
+    });
+    log.push(`form ${path}: HTTP ${r.status}`);
+    return true;
+  }
+  throw new Error('no login form');
+}
+
+// Signs in with username/email + password. Returns { user } or throws with a readable message.
+export async function signIn(login, password, hasSessionCookie) {
+  const log = [];
+  let apiError = null;
+  try { await loginViaApi(login, password, log); } catch (e) { apiError = e; if (!e.fromSite) log.push(`api: ${e.message}`); }
+  if (apiError?.fromSite) throw Object.assign(new Error(apiError.message), { details: log });
+  if (apiError?.blocked) throw Object.assign(new Error(apiError.message), { details: [...log, ...apiError.details], blocked: true, challenge: apiError.challenge });
+  if (apiError && !(await hasSessionCookie())) {
+    try { await loginViaForm(login, password, log); } catch (e) { log.push(`form: ${e.message}`); }
+  }
+  if (!(await hasSessionCookie())) {
+    throw Object.assign(new Error('Sign-in failed. Check your username and password.'), { details: log });
+  }
+  let user = null;
+  try { user = await currentUser(); } catch {}
+  return { user, details: log };
+}
+
 export async function getAlbum(id) {
   const data = await gql('AlbumGet', ALBUM_QUERY, { id: String(id) });
   const a = data?.album?.get;

@@ -104,3 +104,9 @@ body.reading { overflow:hidden; }
 input[type=radio] { width:20px; height:20px; flex:none; accent-color:var(--accent); }
 pre.log { white-space:pre-wrap; word-break:break-word; font-size:12px; color:var(--muted); background:#14161a; padding:8px; border-radius:6px; }
 details summary { color:var(--muted); font-size:13px; margin-top:10px; }
+.login form label { display:block; }
+.login input { width:100%; }
+.pw { display:flex; gap:6px; }
+.pw input { flex:1; }
+.pw button { width:auto !important; margin:0 !important; padding:0 12px; }
+.box .btn.primary { width:100%; }

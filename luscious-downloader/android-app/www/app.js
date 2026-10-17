@@ -168,19 +168,47 @@ function continueRow() {
 }
 
 // ---------- luscious.net login ----------
-// Login happens on luscious.net's own page inside the app; the app only keeps the cookie it sets.
+// A normal sign-in form. The password goes only to luscious.net and is never stored; the app keeps the login cookie.
 const loginState = () => store.get('ldl_login', null);
-async function signIn() {
-  if (!N.hasNative) throw new Error('Sign in works in the Android app.');
-  await N.openVerify('https://www.luscious.net/', 'Log in on the site (tap Login / the person icon), then tap Done');
-  const names = await N.cookieNames();
-  const signedIn = names.some((n) => /^(sessionid|session|auth|token|jwt)/i.test(n));
-  if (!signedIn) { store.set('ldl_login', null); return { signedIn: false }; }
-  let user = null;
-  try { user = await L.currentUser(); } catch {}
-  store.set('ldl_login', { signedIn: true, at: Date.now(), name: user?.name || null });
-  if (user) store.set('ldl_user', { id: user.id, name: user.name });
-  return { signedIn: true, user };
+const hasSessionCookie = async () => !N.hasNative || (await N.cookieNames()).some((n) => /^(sessionid|session|auth|token|jwt)/i.test(n));
+
+function renderLogin(next = '#/favorites', error, details) {
+  app.innerHTML = `<div class="box login">
+    <h2>Sign in to luscious.net</h2>
+    <form id="loginForm" autocomplete="on">
+      <label>Username or email</label>
+      <input name="login" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      <label style="margin-top:10px">Password</label>
+      <div class="pw"><input name="password" type="password" autocomplete="current-password" required><button type="button" id="showPw" aria-label="Show password">👁</button></div>
+      <button class="primary" type="submit">Sign in</button>
+    </form>
+    ${error ? `<div class="err" style="margin-top:12px">${esc(error)}</div>` : ''}
+    ${details?.length ? `<details><summary>Details</summary><pre class="log">${esc(details.join('\n'))}</pre></details>` : ''}
+    <p class="muted small">Your password is sent only to luscious.net and is never saved on your phone.</p>
+    <p class="small"><a href="#/favorites" id="noLogin">Skip – just use my profile link</a></p>
+  </div>`;
+  $('#showPw').onclick = () => { const i = $('#loginForm [name=password]'); i.type = i.type === 'password' ? 'text' : 'password'; };
+  $('#noLogin').onclick = () => store.set('ldl_skip_login', true);
+  $('#loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const btn = e.target.querySelector('button[type=submit]');
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    try {
+      const { user } = await L.signIn(String(f.get('login')).trim(), String(f.get('password')), hasSessionCookie);
+      store.set('ldl_login', { signedIn: true, at: Date.now(), name: user?.name || String(f.get('login')).trim() });
+      if (user) store.set('ldl_user', { id: user.id, name: user.name });
+      location.hash = next;
+      if (location.hash === next) route();
+    } catch (err) {
+      // Rare: luscious.net insists on a bot check first.
+      if (err.challenge && N.hasNative) {
+        await N.openVerify('https://www.luscious.net/').catch(() => {});
+        return renderLogin(next, 'Check complete – please tap Sign in again.');
+      }
+      renderLogin(next, err.message, err.details);
+    }
+  });
 }
 async function signOut() {
   await N.clearCookies().catch(() => {});
@@ -191,6 +219,7 @@ async function signOut() {
 // ---------- favorites ----------
 function renderFavorites() {
   const me = store.get('ldl_user', null);
+  if (!me && !loginState()?.signedIn && !store.get('ldl_skip_login', false) && N.hasNative) return renderLogin('#/favorites');
   if (!me) return renderProfileForm();
   const chips = { all: 'All', hentai: 'Hentai', real: 'Real', manga: 'Manga' };
   const state = {
@@ -217,7 +246,7 @@ function renderProfileForm(error) {
     <h2>Your favorites</h2>
     ${login?.signedIn
       ? `<p class="small">✓ Signed in to luscious.net. The app couldn't work out your account automatically, so paste your profile link below once.</p>`
-      : `<button class="primary" id="signInBtn">Sign in with your luscious account</button>
+      : `<a class="btn primary" href="#/login" style="width:100%">Sign in with your luscious account</a>
          <p class="muted small" style="text-align:center;margin:12px 0">or, without signing in</p>`}
     <form id="pf">
       <label>Your luscious.net profile link or user ID</label>
@@ -227,15 +256,6 @@ function renderProfileForm(error) {
     ${error ? `<div class="err" style="margin-top:12px">${esc(error)}</div>` : ''}
     <p class="muted small">No password needed. On luscious.net, open your profile and copy the link (it has a number in it, like <b>/users/123456/</b>).</p>
   </div>`;
-  $('#signInBtn')?.addEventListener('click', async (e) => {
-    e.target.disabled = true; e.target.textContent = 'Opening luscious.net…';
-    try {
-      const r = await signIn();
-      if (!r.signedIn) return renderProfileForm("You don't seem to be logged in yet. Log in on the site, then tap Done.");
-      if (r.user) return renderFavorites();
-      renderProfileForm();
-    } catch (err) { renderProfileForm(err.message); }
-  });
   $('#pf').addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = L.parseUserId(new FormData(e.target).get('u'));
@@ -466,7 +486,7 @@ async function renderSettings() {
       <p class="small">${loginState()?.signedIn ? `✓ Signed in${me ? ` as <b>${esc(me.name)}</b>` : ''}` : 'Not signed in'}</p>
       ${loginState()?.signedIn
         ? '<button id="signOutBtn">Sign out</button>'
-        : '<button class="primary" id="signInBtn2">Sign in</button><p class="muted small">Opens luscious.net\'s own login page in the app. Your password only goes to luscious.net.</p>'}
+        : '<a class="btn primary" href="#/login">Sign in</a><p class="muted small">Your password only goes to luscious.net and is never saved.</p>'}
       <p class="muted small" style="margin-top:10px">${me ? `Favorites shown from <b>${esc(me.name)}</b> (user ${esc(me.id)})` : 'No favorites profile set.'}</p>
       <a class="btn" href="#/favorites">${me ? 'Open favorites' : 'Set up favorites'}</a>
       <button id="clearProgress">Clear reading history</button>
@@ -502,14 +522,6 @@ async function renderSettings() {
     store.set('ldl_storage', { type: 'app', index: v.index, label: `${v.label} (app folder)` });
   }));
   if (target?.type === 'tree') store.set('ldl_storage_tree', target);
-  $('#signInBtn2')?.addEventListener('click', async (e) => {
-    e.target.disabled = true;
-    try {
-      const r = await signIn();
-      if (!r.signedIn) alert("You don't seem to be logged in. Log in on the site, then tap Done.");
-    } catch (err) { alert(err.message); }
-    renderSettings();
-  });
   $('#signOutBtn')?.addEventListener('click', async () => {
     if (!confirm('Sign out of luscious.net in this app?')) return;
     await signOut();
@@ -523,7 +535,7 @@ function route() {
   if (readerOpen()) closeReader();
   const [, kind = '', a = '', b = ''] = location.hash.split('/');
   if (SECTIONS[kind]) section = kind;
-  const tab = SECTIONS[kind] ? kind : ['favorites', 'downloads', 'settings'].includes(kind) ? kind : kind === 'album' || kind === 'read' ? null : 'hentai';
+  const tab = SECTIONS[kind] ? kind : ['favorites', 'downloads', 'settings'].includes(kind) ? kind : kind === 'login' ? 'favorites' : kind === 'album' || kind === 'read' ? null : 'hentai';
   if (tab) document.querySelectorAll('nav a').forEach((n) => n.classList.toggle('on', n.dataset.tab === tab));
   window.scrollTo(0, 0);
   if (!SECTIONS[kind]) $('#q').value = '';
@@ -533,6 +545,7 @@ function route() {
   if (kind === 'favorites') return renderFavorites();
   if (kind === 'downloads') return renderDownloads();
   if (kind === 'settings') return renderSettings();
+  if (kind === 'login') return renderLogin(a ? decodeURIComponent(a) : '#/favorites');
   renderSection(SECTIONS[kind] ? kind : 'hentai', decodeURIComponent(a), b);
 }
 window.addEventListener('hashchange', route);
