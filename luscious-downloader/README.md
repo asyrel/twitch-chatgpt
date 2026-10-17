@@ -17,6 +17,15 @@ Open http://localhost:3000. You can:
 - paste an album link to open it directly
 - view every picture full screen (swipe or arrow keys)
 - tap **Download ZIP** to get the whole album as one `.zip`
+- **Sign in** with your luscious.net account and open **♥ Favorites** to see (and download) your favorited albums
+
+### Signing in
+
+Tap **Sign in** and enter your luscious.net username and password. Your password is sent only to luscious.net and is never saved. The app keeps only the login cookie, in `data/sessions.json` on the computer running it (git-ignored). **Sign out** deletes it.
+
+If password sign-in doesn't work, the sign-in page has a fallback: sign in on luscious.net in a desktop browser, copy the `sessionid` cookie (developer tools → Application/Storage → Cookies) and paste it in.
+
+luscious.net doesn't document how login and favorites work in its API, so the app works this out from the site's API when it runs. If sign-in or favorites fail, open your account page → **Troubleshooting info** and share what it shows.
 
 To open it from your phone on the same Wi-Fi, run `HOST=0.0.0.0 npm start` and visit `http://<your-computer-ip>:3000`. Change the port with `PORT=8080`.
 

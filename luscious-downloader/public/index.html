@@ -42,7 +42,15 @@
   #viewer .prev { left:6px; } #viewer .next { right:6px; }
   #viewer .top { position:absolute; top:0; left:0; right:0; display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:linear-gradient(rgba(0,0,0,.7),transparent); }
   #viewer .top button, #viewer .top a { background:rgba(255,255,255,.1); border:none; }
-  @media (max-width:520px) { .logo { display:none; } .grid { grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:8px; } .album-head img { width:110px; } }
+  .login { max-width:380px; margin:20px auto; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:20px; }
+  .login h2 { margin:0 0 14px; font-size:20px; }
+  .login label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+  .login input, .login textarea { width:100%; font:inherit; border-radius:8px; border:1px solid var(--line); background:#14161a; color:var(--text); padding:10px 12px; }
+  .login button { width:100%; margin-top:16px; justify-content:center; }
+  details { margin-top:18px; font-size:14px; } summary { cursor:pointer; color:var(--muted); }
+  pre.log { white-space:pre-wrap; font-size:12px; color:var(--muted); background:#14161a; padding:8px; border-radius:6px; }
+  [hidden] { display:none !important; }
+  @media (max-width:520px) { .lbl { display:none; } .logo { display:none; } .grid { grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:8px; } .album-head img { width:110px; } }
 </style>
 </head>
 <body>
@@ -59,6 +67,8 @@
       </select>
       <button class="primary" type="submit">Go</button>
     </form>
+    <a id="favBtn" class="btn" href="#/favorites" hidden title="My favorites">♥<span class="lbl"> Favorites</span></a>
+    <a id="acctBtn" class="btn" href="#/login">Sign in</a>
   </div>
 </header>
 <main id="app"></main>
@@ -89,6 +99,12 @@ async function api(path) {
   if (!r.ok) throw new Error(j.error || 'Request failed (' + r.status + ')');
   return j;
 }
+async function getJson(path) {
+  const r = await fetch(path);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.error || 'Request failed (' + r.status + ')'), { log: j.log });
+  return j;
+}
 const loading = () => (app.innerHTML = '<div class="center"><div class="spinner"></div></div>');
 const showError = (e) => (app.innerHTML = `<div class="err">${esc(e.message || e)}</div>`);
 
@@ -99,7 +115,75 @@ $('#search').addEventListener('submit', (e) => {
   else location.hash = '#/search/' + encodeURIComponent(v) + '/' + ($('#sort').value || '');
 });
 
-// ---------- Search ----------
+// ---------- Account ----------
+let me = null;
+async function refreshMe() {
+  try { me = (await api('/api/me')).user; } catch { me = null; }
+  $('#favBtn').hidden = !me;
+  $('#acctBtn').textContent = me ? (me.name || 'Account') : 'Sign in';
+  $('#acctBtn').href = me ? '#/account' : '#/login';
+}
+async function post(path, body) {
+  const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.error || 'Request failed'), { log: j.log });
+  return j;
+}
+function renderLogin() {
+  app.innerHTML = `<div class="login">
+    <h2>Sign in to luscious.net</h2>
+    <form id="loginForm">
+      <label>Username or email</label><input name="username" autocomplete="username" required>
+      <label>Password</label><input name="password" type="password" autocomplete="current-password" required>
+      <button class="primary" type="submit">Sign in</button>
+    </form>
+    <div id="loginMsg"></div>
+    <p class="muted" style="font-size:13px">Your password is sent to luscious.net only to sign in. It is never stored. Only the login cookie is kept on the computer running this app.</p>
+    <details><summary>Sign-in not working? Use your browser's cookie instead</summary>
+      <p class="muted">Sign in on luscious.net in a desktop browser, open developer tools → Application/Storage → Cookies, and copy the <b>sessionid</b> value.</p>
+      <form id="cookieForm">
+        <textarea name="cookie" rows="3" placeholder="sessionid value (or the full cookie line)"></textarea>
+        <button type="submit">Use cookie</button>
+      </form>
+    </details>
+  </div>`;
+  const msg = (html) => ($('#loginMsg').innerHTML = html);
+  $('#loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const btn = e.target.querySelector('button'); btn.disabled = true; btn.textContent = 'Signing in…';
+    try {
+      await post('/api/login', { username: f.get('username'), password: f.get('password') });
+      await refreshMe(); location.hash = '#/favorites';
+    } catch (err) {
+      msg(`<div class="err" style="margin-top:12px">${esc(err.message)}</div>` +
+        (err.log?.length ? `<details><summary>Details</summary><pre class="log">${esc(err.log.join('\n'))}</pre></details>` : ''));
+      btn.disabled = false; btn.textContent = 'Sign in';
+    }
+  });
+  $('#cookieForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      await post('/api/login-cookie', { cookie: new FormData(e.target).get('cookie') });
+      await refreshMe(); location.hash = '#/favorites';
+    } catch (err) { msg(`<div class="err" style="margin-top:12px">${esc(err.message)}</div>`); }
+  });
+}
+function renderAccount() {
+  if (!me) return renderLogin();
+  app.innerHTML = `<div class="login">
+    <h2>${esc(me.name)}</h2>
+    <a class="btn primary" href="#/favorites" style="width:100%;justify-content:center">♥ My favorites</a>
+    <button id="logout">Sign out</button>
+    <details><summary>Troubleshooting info</summary><pre class="log" id="diag">Loading…</pre></details>
+  </div>`;
+  $('#logout').addEventListener('click', async () => { await post('/api/logout'); await refreshMe(); location.hash = ''; });
+  $('details').addEventListener('toggle', async () => {
+    try { $('#diag').textContent = JSON.stringify(await api('/api/diagnose'), null, 2); } catch (e) { $('#diag').textContent = e.message; }
+  }, { once: true });
+}
+
+// ---------- Album lists (search + favorites) ----------
 let searchState = null;
 async function renderSearch(q, sort) {
   searchState = { q, sort, page: 1, items: [], hasNext: false };
@@ -107,16 +191,27 @@ async function renderSearch(q, sort) {
   loading();
   try { await loadPage(); } catch (e) { showError(e); }
 }
+async function renderFavorites() {
+  if (!me) return (location.hash = '#/login');
+  searchState = { favorites: true, page: 1, items: [], hasNext: false };
+  loading();
+  try { await loadPage(); } catch (e) {
+    app.innerHTML = `<div class="err">${esc(e.message)}</div>` +
+      (e.log?.length ? `<details><summary>Details</summary><pre class="log">${esc(e.log.join('\n'))}</pre></details>` : '');
+  }
+}
 async function loadPage() {
   const s = searchState;
-  const res = await api(`/api/search?q=${encodeURIComponent(s.q)}&sort=${s.sort}&page=${s.page}`);
+  const res = s.favorites
+    ? await getJson(`/api/favorites?page=${s.page}`)
+    : await api(`/api/search?q=${encodeURIComponent(s.q)}&sort=${s.sort}&page=${s.page}`);
   if (s !== searchState) return;
   s.items.push(...res.items);
   s.hasNext = res.info?.has_next_page;
-  const heading = s.q ? `Results for “${esc(s.q)}”` : 'Trending albums';
+  const heading = s.favorites ? '♥ My favorites' : s.q ? `Results for “${esc(s.q)}”` : 'Trending albums';
   const total = res.info?.total_items != null ? ` <span class="muted">(${res.info.total_items})</span>` : '';
   app.innerHTML = `<h2 style="margin:4px 0 14px;font-size:18px">${heading}${total}</h2>` +
-    (s.items.length ? `<div class="grid">${s.items.map(card).join('')}</div>` : '<p class="muted">No albums found.</p>') +
+    (s.items.length ? `<div class="grid">${s.items.map(card).join('')}</div>` : `<p class="muted">${s.favorites ? 'No favorites yet.' : 'No albums found.'}</p>`) +
     (s.hasNext ? '<div class="center"><button id="more">Load more</button></div>' : '');
   $('#more')?.addEventListener('click', async (e) => {
     e.target.disabled = true; e.target.textContent = 'Loading…';
@@ -196,10 +291,13 @@ function route() {
   const [, kind, a = '', b = ''] = location.hash.split('/');
   document.title = 'Luscious DL';
   if (kind === 'album') renderAlbum(decodeURIComponent(a));
+  else if (kind === 'login') renderLogin();
+  else if (kind === 'account') renderAccount();
+  else if (kind === 'favorites') renderFavorites();
   else renderSearch(decodeURIComponent(a), b);
 }
 window.addEventListener('hashchange', route);
-route();
+refreshMe().then(route);
 </script>
 </body>
 </html>
