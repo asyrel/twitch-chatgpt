@@ -92,9 +92,40 @@ $('#search').addEventListener('submit', (e) => {
   const v = $('#q').value.trim();
   $('#q').blur();
   if (L.looksLikeAlbum(v)) location.hash = '#/album/' + encodeURIComponent(v);
-  else location.hash = `#/${SECTIONS[section] ? section : 'hentai'}/${encodeURIComponent(v)}/${$('#sort').value || ''}`;
+  else location.hash = `#/${SECTIONS[section] ? section : 'hentai'}/${encodeURIComponent(v)}/${v ? '' : store.get('ldl_sort', '')}`;
 });
-$('#sort').addEventListener('change', () => $('#search').requestSubmit());
+
+// ---------- sorting ----------
+let sortValues = ['date_trending', 'date_newest', 'rating_all_time', 'search_score'];
+L.getSortOptions().then((v) => {
+  sortValues = v;
+  if (listState?.section && !document.querySelector('.reader')) draw();
+});
+// Two rows of buttons: what to sort by, then (if it applies) the time range.
+function sortBar(sec, q, current) {
+  const opts = sortValues.map(L.describeSort).filter((o) => o.value !== 'search_score' || q);
+  const cur = L.describeSort(current || (q ? 'search_score' : 'date_trending'));
+  const kinds = [];
+  for (const o of opts) if (!kinds.some((k) => k.kind === o.kind)) kinds.push(o);
+  const periods = opts.filter((o) => o.kind === cur.kind && o.period);
+  const href = (v) => `#/${sec}/${encodeURIComponent(q)}/${v}`;
+  const pickFor = (kind) => {
+    const ps = opts.filter((o) => o.kind === kind);
+    const lastPeriod = cur.period || store.get('ldl_period', 'all_time');
+    return (ps.find((o) => o.period === lastPeriod) || ps.find((o) => o.period === 'all_time') || ps[0]).value;
+  };
+  return `<div class="sortbar">
+    <div class="chips">${kinds.map((k) => `<a class="chip ${k.kind === cur.kind ? 'on' : ''}" data-sort="${pickFor(k.kind)}" href="${href(pickFor(k.kind))}">${esc(k.kindLabel)}</a>`).join('')}</div>
+    ${periods.length > 1 ? `<div class="chips small-chips">${periods.map((o) => `<a class="chip ${o.value === cur.value ? 'on' : ''}" data-sort="${o.value}" data-period="${o.period}" href="${href(o.value)}">${esc(o.periodLabel)}</a>`).join('')}</div>` : ''}
+  </div>`;
+}
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('.sortbar a[data-sort]');
+  if (!a) return;
+  store.set('ldl_sort', a.dataset.sort);
+  const d = L.describeSort(a.dataset.sort);
+  if (d.period) store.set('ldl_period', d.period);
+});
 
 // ---------- album lists ----------
 let listState = null;
@@ -149,12 +180,13 @@ function card(a) {
 function renderSection(sec, q, sort) {
   section = sec;
   $('#q').placeholder = SECTIONS[sec].placeholder;
-  $('#q').value = q; $('#sort').value = sort;
+  $('#q').value = q;
+  if (!sort && !q) sort = store.get('ldl_sort', '') || '';
   renderList({
     section: sec,
-    title: q ? `${SECTIONS[sec].title}: “${esc(q)}”` : `Trending ${SECTIONS[sec].title.toLowerCase()}`,
+    title: q ? `${SECTIONS[sec].title}: “${esc(q)}”` : SECTIONS[sec].title,
     fetch: (page) => L.listAlbums({ section: sec, q, sort, page }),
-    header: () => (sec === 'manga' && !q ? continueRow() : ''),
+    header: () => (sec === 'manga' && !q ? continueRow() : '') + sortBar(sec, q, sort),
   });
 }
 function continueRow() {

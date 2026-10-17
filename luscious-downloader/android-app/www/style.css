@@ -110,3 +110,10 @@ details summary { color:var(--muted); font-size:13px; margin-top:10px; }
 .pw input { flex:1; }
 .pw button { width:auto !important; margin:0 !important; padding:0 12px; }
 .box .btn.primary { width:100%; }
+.sortbar { margin:0 0 12px; }
+.sortbar .chips { margin-bottom:6px; padding-bottom:2px; scrollbar-width:none; }
+.sortbar .chips::-webkit-scrollbar { display:none; }
+.chip { flex:none; border:1px solid var(--line); background:var(--panel); color:var(--text); border-radius:20px; padding:6px 14px; font-size:13px; text-decoration:none; white-space:nowrap; }
+.chip.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+.small-chips .chip { padding:4px 11px; font-size:12px; }
+.small-chips .chip.on { background:#3a2030; border-color:var(--accent); color:var(--accent2); }

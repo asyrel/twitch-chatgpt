@@ -213,12 +213,74 @@ export function contentKind(album) {
   return 'other';
 }
 
-export const SORTS = ['date_trending', 'date_newest', 'rating_all_time', 'search_score'];
+// ---------- sort options ----------
+// Known/likely values for AlbumListInput.display. The real list is read from the API when possible.
+const SORT_CANDIDATES = [
+  'date_trending', 'date_newest', 'date_last_interaction',
+  'rating_7_days', 'rating_14_days', 'rating_30_days', 'rating_90_days', 'rating_365_days', 'rating_all_time',
+  'view_count_7_days', 'view_count_14_days', 'view_count_30_days', 'view_count_90_days', 'view_count_365_days', 'view_count_all_time',
+  'favorites_7_days', 'favorites_30_days', 'favorites_365_days', 'favorites_all_time',
+  'search_score',
+];
+const PERIOD_LABEL = { '1_day': 'Today', '7_days': '7 days', '14_days': '14 days', '30_days': '30 days', '90_days': '3 months', '180_days': '6 months', '365_days': '1 year', all_time: 'All time' };
+const KIND_LABEL = { rating: 'Top rated', view_count: 'Most viewed', views: 'Most viewed', favorites: 'Most favorited', likes: 'Most liked', comments: 'Most commented' };
+
+// Splits a display value into { kind, kindLabel, period, periodLabel }.
+export function describeSort(v) {
+  const simple = { date_trending: 'Trending', date_newest: 'Newest', date_last_interaction: 'Recently active', search_score: 'Best match', date_oldest: 'Oldest' };
+  if (simple[v]) return { value: v, kind: v, kindLabel: simple[v], period: null, periodLabel: null };
+  const m = v.match(/^([a-z_]+?)_((?:\d+_days?)|all_time|today|week|month|year)$/);
+  if (m) {
+    const period = m[2];
+    return { value: v, kind: m[1], kindLabel: KIND_LABEL[m[1]] || m[1].replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()), period, periodLabel: PERIOD_LABEL[period] || period.replace(/_/g, ' ') };
+  }
+  return { value: v, kind: v, kindLabel: v.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()), period: null, periodLabel: null };
+}
+
+let sortsPromise = null;
+// Returns the display values luscious.net accepts, in a sensible order.
+export function getSortOptions() {
+  if (sortsPromise) return sortsPromise;
+  sortsPromise = (async () => {
+    try {
+      const cached = JSON.parse(ls.get('ldl_sorts') || 'null');
+      if (cached && Date.now() - cached.at < 7 * 864e5 && cached.values?.length) return cached.values;
+    } catch {}
+    let values = null;
+    // 1) If "display" is an enum, the schema lists every option.
+    try {
+      const input = await fullType('AlbumListInput');
+      const disp = named(input?.inputFields?.find((f) => f.name === 'display')?.type);
+      if (disp?.kind === 'ENUM') values = (await fullType(disp.name))?.enumValues?.map((e) => e.name) || null;
+    } catch {}
+    // 2) Otherwise try likely values; keep the ones that work and give different results.
+    if (!values?.length) {
+      const seen = new Map();
+      values = [];
+      for (const v of SORT_CANDIDATES) {
+        if (v === 'search_score') { values.push(v); continue; }
+        try {
+          const data = await gql('AlbumList', LIST_QUERY, { input: { display: v, filters: [{ name: 'album_type', value: 'pictures' }], page: 1 } });
+          const ids = (data?.album?.list?.items || []).map((a) => a?.id).join(',');
+          if (!ids) continue;
+          if (seen.has(ids) && !['date_trending', 'date_newest', 'rating_all_time'].includes(v)) continue; // silently ignored value
+          seen.set(ids, v);
+          values.push(v);
+        } catch {}
+      }
+    }
+    const order = (v) => { const i = SORT_CANDIDATES.indexOf(v); return i < 0 ? 999 : i; };
+    values = [...new Set(values)].sort((a, b) => order(a) - order(b));
+    if (values.length) ls.set('ldl_sorts', JSON.stringify({ at: Date.now(), values }));
+    return values.length ? values : ['date_trending', 'date_newest', 'rating_all_time', 'search_score'];
+  })().catch(() => { sortsPromise = null; return ['date_trending', 'date_newest', 'rating_all_time', 'search_score']; });
+  return sortsPromise;
+}
 
 // section: 'hentai' | 'real' | 'manga' | null (everything)
 export async function listAlbums({ section = null, q = '', sort = '', page = 1 } = {}) {
   q = String(q || '').trim();
-  const display = SORTS.includes(sort) ? sort : q ? 'search_score' : 'date_trending';
+  const display = /^[a-z0-9_]+$/.test(sort || '') ? sort : q ? 'search_score' : 'date_trending';
   const filters = [{ name: 'album_type', value: section === 'manga' ? 'manga' : 'pictures' }];
   if (!section) filters.length = 0;
   if (section === 'hentai' || section === 'real') {
@@ -294,7 +356,7 @@ export async function currentUser() {
 const TYPE_REF = 'kind name ofType { kind name ofType { kind name ofType { kind name } } }';
 const FULL_TYPE_Q = `query LdlFullType($name: String!) { __type(name: $name) { name kind
   fields { name args { name type { ${TYPE_REF} } } type { ${TYPE_REF} } }
-  inputFields { name type { ${TYPE_REF} } } possibleTypes { name } } }`;
+  inputFields { name type { ${TYPE_REF} } } possibleTypes { name } enumValues { name } } }`;
 const typeCache = new Map();
 async function fullType(name) {
   if (!name) return null;
