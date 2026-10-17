@@ -1,0 +1,9 @@
+{
+  "appId": "com.lusciousdl.app",
+  "appName": "Luscious DL",
+  "webDir": "www",
+  "android": { "allowMixedContent": false },
+  "plugins": {
+    "CapacitorHttp": { "enabled": true }
+  }
+}

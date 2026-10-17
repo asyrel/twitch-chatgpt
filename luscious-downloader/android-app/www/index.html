@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>Luscious DL</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="bar">
+    <form id="search">
+      <input id="q" type="search" placeholder="Search or paste album link…" autocomplete="off" enterkeyhint="search">
+      <select id="sort" title="Sort">
+        <option value="">Best</option>
+        <option value="date_trending">Trending</option>
+        <option value="date_newest">Newest</option>
+        <option value="rating_all_time">Top</option>
+      </select>
+    </form>
+  </div>
+  <nav>
+    <a href="#/" data-tab="home">Browse</a>
+    <a href="#/favorites" data-tab="favorites">♥ Favorites</a>
+    <a href="#/downloads" data-tab="downloads">⬇ Downloads</a>
+  </nav>
+</header>
+<main id="app"></main>
+
+<div id="dlbar" hidden>
+  <div class="dlinfo"><span id="dltext"></span><button id="dlcancel">Cancel</button></div>
+  <div class="progress"><div id="dlfill"></div></div>
+</div>
+
+<div id="viewer">
+  <div class="top">
+    <span id="vcount"></span>
+    <button id="vclose">✕</button>
+  </div>
+  <button class="nav prev" data-step="-1">‹</button>
+  <div id="vmedia"></div>
+  <button class="nav next" data-step="1">›</button>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

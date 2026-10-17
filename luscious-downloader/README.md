@@ -4,6 +4,20 @@ A small app to browse and download albums from luscious.net. It has a web page a
 
 **18+ only.** Use it for your own personal archiving, and respect the site's terms and the creators' rights.
 
+## Android app (APK)
+
+Install on your phone from this link (open it on the phone):
+
+**https://github.com/asyrel/twitch-chatgpt/releases/download/luscious-dl-latest/LusciousDL.apk**
+
+Android will ask you to allow installing apps from your browser the first time. The app runs entirely on the phone, so no computer or server is needed. It can:
+
+- browse and search albums, and view pictures full screen
+- show any user's favorites: enter your profile link (like `https://www.luscious.net/users/123456/`), no password needed
+- save albums to the phone's **Pictures/Luscious** folder (they show up in your gallery), or queue all your favorites at once
+
+The APK is built by GitHub Actions (`.github/workflows/luscious-apk.yml`) on every push that changes `android-app/`. To build it yourself, install Android Studio, then run `npm install && npm run build:apk` in `android-app/`.
+
 ## Web app
 
 ```bash
