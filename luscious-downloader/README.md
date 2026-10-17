@@ -16,7 +16,11 @@ Android will ask you to allow installing apps from your browser the first time. 
 - hide gay (male/male), futa and furry albums by default, plus any tags you choose (Settings ⚙)
 - a manga reader: right-to-left, left-to-right or long strip; tap zones and swipes; pinch and double-tap zoom; fit screen or width; page slider; preloading; keeps the screen on; remembers your page ("Continue reading"); reads saved albums offline
 - show any user's favorites by profile link (like `https://www.luscious.net/users/123456/`), no password needed, filterable by Hentai / Real / Manga
-- save albums to the phone's **Pictures/Luscious** folder (they show up in your gallery), or queue all your favorites at once
+- save albums to the **SD card** or phone, never shown in the Gallery (Settings ⚙ → Save downloads to):
+  - *app folder* on SD card or phone: no setup, but removed if the app is uninstalled (updates are fine)
+  - *a folder you choose*: kept after uninstalling; a `.nomedia` file keeps it out of the Gallery
+- downloads run natively with a progress notification, so they keep going with the screen off
+- tuned for the Samsung Galaxy A25: volume keys turn pages, full-screen reading, screen stays on, layout fits the notch and navigation bar
 
 The APK is built by GitHub Actions (`.github/workflows/luscious-apk.yml`) on every push that changes `android-app/`. To build it yourself, install Android Studio, then run `npm install && npm run build:apk` in `android-app/`.
 

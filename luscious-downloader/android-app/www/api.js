@@ -1,10 +1,11 @@
+import * as N from './native.js';
+
 // luscious.net client that runs inside the Android app (no server needed).
 // On the phone, requests go through Capacitor's native HTTP so the site's CORS rules don't apply.
 const Cap = window.Capacitor;
 export const isNative = !!Cap?.isNativePlatform?.();
 const plugin = (name) => Cap?.Plugins?.[name] || Cap?.registerPlugin?.(name);
 const Http = isNative ? plugin('CapacitorHttp') : null;
-const FS = isNative ? plugin('Filesystem') : null;
 
 const API = (() => {
   try { return localStorage.getItem('ldl_api') || 'https://members.luscious.net/graphql/nobatch/'; }
@@ -242,29 +243,6 @@ export async function imageDataUrl(url) {
   return `data:${type};base64,${r.data}`;
 }
 
-async function downloadBase64(url, retries = 3) {
-  let last;
-  for (let i = 0; i <= retries; i++) {
-    try {
-      if (Http) {
-        const r = await Http.request({ url, method: 'GET', responseType: 'blob', headers: { 'User-Agent': UA } });
-        if (r.status >= 400) throw new Error(`HTTP ${r.status}`);
-        return r.data;
-      }
-      const r = await fetch(url);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const buf = new Uint8Array(await r.arrayBuffer());
-      let s = '';
-      for (let j = 0; j < buf.length; j += 0x8000) s += String.fromCharCode(...buf.subarray(j, j + 0x8000));
-      return btoa(s);
-    } catch (e) {
-      last = e;
-      await new Promise((res) => setTimeout(res, 600 * 2 ** i));
-    }
-  }
-  throw last;
-}
-
 export function safeName(s, max = 80) {
   return (String(s).replace(/[\\/:*?"<>|\x00-\x1f]+/g, '_').replace(/\s+/g, ' ').trim().slice(0, max).replace(/[. ]+$/, '')) || 'untitled';
 }
@@ -276,68 +254,31 @@ export function fileNameFor(pic, index, total) {
   return `${String(index + 1).padStart(width, '0')}${base}${ext || '.jpg'}`;
 }
 
-// Where albums are saved. Pictures/ shows up in the phone's gallery; Documents/ is the fallback.
-const TARGETS = [
-  { directory: 'EXTERNAL_STORAGE', root: 'Pictures/Luscious', label: 'Pictures/Luscious' },
-  { directory: 'DOCUMENTS', root: 'Luscious', label: 'Documents/Luscious' },
-];
+// ---------- saving to the phone ----------
+// Folder name for an album inside the download location.
+export const albumFolder = (album) => `${safeName(album.title)} (${album.id})`;
 
-async function exists(path, directory) {
-  try { await FS.stat({ path, directory }); return true; } catch { return false; }
+// Saves every picture of an album (skips files already saved). Runs natively so it keeps going in the background.
+export async function saveAlbum(album, pictures, target, { onProgress, jobId } = {}) {
+  if (!N.hasNative) throw new Error('Saving only works in the Android app.');
+  if (!target) throw new Error('Choose a download location in Settings first.');
+  const folder = albumFolder(album);
+  const files = pictures.map((p, i) => ({ url: p.original, name: fileNameFor(p, i, pictures.length) }));
+  const r = await N.downloadAlbum({ target, folder, title: album.title, files, jobId, onProgress });
+  return { folder, failed: r.failed, cancelled: r.cancelled };
 }
 
-// Saves every picture of an album into its own folder on the phone. Skips files already saved.
-export async function saveAlbum(album, pictures, { onProgress, signal, concurrency = 3 } = {}) {
-  if (!FS) throw new Error('Saving to the phone only works in the Android app.');
-  try { await FS.requestPermissions?.(); } catch {}
-  const folder = `${safeName(album.title)} (${album.id})`;
-  let target = null;
-  for (const t of TARGETS) {
-    try {
-      await FS.mkdir({ path: `${t.root}/${folder}`, directory: t.directory, recursive: true }).catch(async (e) => {
-        if (!(await exists(`${t.root}/${folder}`, t.directory))) throw e;
-      });
-      target = t;
-      break;
-    } catch {}
-  }
-  if (!target) throw new Error('Could not create a folder on the phone. Check storage permission.');
-
-  let done = 0, failed = 0, next = 0;
-  const worker = async () => {
-    while (next < pictures.length) {
-      if (signal?.aborted) return;
-      const i = next++;
-      const p = pictures[i];
-      const path = `${target.root}/${folder}/${fileNameFor(p, i, pictures.length)}`;
-      try {
-        if (!(await exists(path, target.directory))) {
-          const data = await downloadBase64(p.original);
-          if (signal?.aborted) return;
-          await FS.writeFile({ path, data, directory: target.directory, recursive: true });
-        }
-      } catch {
-        failed++;
-      }
-      done++;
-      onProgress?.({ done, failed, total: pictures.length });
-    }
-  };
-  await Promise.all(Array.from({ length: concurrency }, worker));
-  return {
-    folder: `${target.label}/${folder}`, directory: target.directory, path: `${target.root}/${folder}`,
-    failed, cancelled: !!signal?.aborted,
-  };
-}
-
-// URLs of a saved album's files on the phone, for offline reading. null if not available.
-export async function localUrls(saved, pictures) {
-  if (!FS || !saved?.directory || !saved?.path) return null;
+// URLs of a saved album's files on the phone, for offline reading. null if not saved.
+export async function localUrls(target, folder, pictures) {
+  if (!N.hasNative || !target || !folder) return null;
   try {
-    return await Promise.all(pictures.map(async (p, i) => {
-      const { uri } = await FS.getUri({ path: `${saved.path}/${fileNameFor(p, i, pictures.length)}`, directory: saved.directory });
-      return Cap.convertFileSrc ? Cap.convertFileSrc(uri) : uri;
-    }));
+    const r = await N.listAlbum(target, folder);
+    if (!r?.exists) return null;
+    const byName = new Map(r.files.map((f) => [f.name, f.uri]));
+    return pictures.map((p, i) => {
+      const uri = byName.get(fileNameFor(p, i, pictures.length));
+      return uri ? N.fileSrc(uri) : null;
+    });
   } catch {
     return null;
   }

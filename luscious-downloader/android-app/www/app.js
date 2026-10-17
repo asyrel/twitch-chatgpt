@@ -1,4 +1,5 @@
 import * as L from './api.js';
+import * as N from './native.js';
 import { openReader, closeReader, readerOpen, readerPrefs, saveReaderPrefs, MODES } from './reader.js';
 
 const $ = (s) => document.querySelector(s);
@@ -39,6 +40,21 @@ document.addEventListener('error', async (e) => {
   img.dataset.retried = '1';
   try { img.src = await L.imageDataUrl(img.dataset.src); } catch {}
 }, true);
+
+// ---------- download location ----------
+const fmtBytes = (n) => n == null ? '' : n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.round(n / 1e6)} MB`;
+// { type: 'app', index, label } (private app folder on phone/SD) or { type: 'tree', uri, label } (folder the user picked)
+async function getTarget() {
+  const t = store.get('ldl_storage', null);
+  if (t) return t;
+  if (!N.hasNative) return null;
+  const vols = await N.getVolumes().catch(() => []);
+  const v = vols.find((x) => x.removable) || vols[0];
+  if (!v) return null;
+  const target = { type: 'app', index: v.index, label: `${v.label} (app folder)` };
+  store.set('ldl_storage', target);
+  return target;
+}
 
 // ---------- reading progress ----------
 const progressAll = () => store.get('ldl_progress', {});
@@ -233,6 +249,7 @@ async function renderAlbum(ref) {
             <button id="dl">⬇ Save</button>
           </div>
           ${prog && prog.page > 0 ? '<button id="restart" class="linkish">Start from page 1</button>' : ''}
+          ${savedEntry(album.id) ? `<div class="muted small">✓ Saved to ${esc(savedEntry(album.id).target.label)} · <button id="delSaved" class="linkish">Delete from phone</button></div>` : ''}
         </div>
       </div>
       <div class="row">${tags.map((t) => `<a class="tag" href="#/${album.isManga ? 'manga' : L.contentKind(album) === 'real' ? 'real' : 'hentai'}/${encodeURIComponent(t)}/">${esc(t)}</a>`).join('')}</div>
@@ -240,14 +257,15 @@ async function renderAlbum(ref) {
     $('#read').onclick = () => startReading(album, pictures, prog?.page || 0);
     $('#restart')?.addEventListener('click', () => startReading(album, pictures, 0));
     $('#dl').onclick = (e) => { enqueue(album); e.target.textContent = 'Queued'; e.target.disabled = true; };
+    $('#delSaved')?.addEventListener('click', async () => { if (confirm('Delete the saved copy of this album from your phone?')) { await deleteSaved(album.id); renderAlbum(album.id); } });
     app.querySelectorAll('.thumb').forEach((t) => (t.onclick = () => startReading(album, pictures, +t.dataset.i)));
   } catch (e) { showError(e); }
 }
 
 async function startReading(album, pictures, start) {
-  const saved = dlHistory().find((h) => h.id === album.id && h.status === 'done');
-  const local = saved ? await L.localUrls(saved, pictures) : null;
-  const pages = pictures.map((p, i) => (local ? { src: local[i], fallback: p.original } : { src: p.original }));
+  const saved = savedEntry(album.id);
+  const local = saved ? await L.localUrls(saved.target, saved.folder, pictures) : null;
+  const pages = pictures.map((p, i) => (local?.[i] ? { src: local[i], fallback: p.original } : { src: p.original }));
   const p = prefs();
   const prog = progressOf(album.id);
   const mode = prog?.mode || (album.isManga ? p.mangaMode : 'ltr');
@@ -273,6 +291,13 @@ async function renderRead(id, page) {
 const queue = [];
 let active = null;
 const dlHistory = () => store.get('ldl_history', []);
+const savedEntry = (id) => dlHistory().find((h) => h.id === id && h.target && (h.status === 'done' || h.status === 'partial')) || null;
+async function deleteSaved(id) {
+  const e = savedEntry(id);
+  if (!e) return;
+  try { await N.deleteAlbum(e.target, e.folder); } catch {}
+  store.set('ldl_history', dlHistory().filter((h) => h.id !== id));
+}
 function enqueue(album) {
   if (active?.album.id === album.id || queue.some((a) => a.id === album.id)) return;
   queue.push(album);
@@ -282,24 +307,26 @@ function enqueue(album) {
 async function runQueue() {
   if (active || !queue.length) return;
   const album = queue.shift();
-  active = { album, ctrl: new AbortController(), done: 0, total: 0, failed: 0 };
+  active = { album, done: 0, total: 0, failed: 0 };
+  N.setBackgroundMode(true);
   showBar();
   let entry;
   try {
     $('#dltext').textContent = `Listing “${album.title}”…`;
+    const target = await getTarget();
     const pictures = albumCache.get(album.id)?.pictures || await L.getAllPictures(album.id);
     active.total = pictures.length;
-    const r = await L.saveAlbum(album, pictures, {
-      signal: active.ctrl.signal,
-      onProgress: (p) => { Object.assign(active, p); showBar(); },
+    const r = await L.saveAlbum(album, pictures, target, {
+      jobId: `${album.id}-${Date.now()}`,
+      onProgress: (p) => { Object.assign(active, { done: p.done, failed: p.failed, total: p.total }); showBar(); },
     });
-    entry = { id: album.id, title: album.title, folder: r.folder, directory: r.directory, path: r.path, count: pictures.length - r.failed, failed: r.failed, status: r.cancelled ? 'cancelled' : r.failed ? 'partial' : 'done' };
+    entry = { id: album.id, title: album.title, target, folder: r.folder, count: pictures.length - r.failed, failed: r.failed, status: r.cancelled ? 'cancelled' : r.failed ? 'partial' : 'done' };
   } catch (e) {
     entry = { id: album.id, title: album.title, status: 'error', error: e.message };
   }
   store.set('ldl_history', [{ ...entry, at: Date.now() }, ...dlHistory().filter((h) => h.id !== album.id)].slice(0, 300));
   active = null;
-  if (!queue.length) $('#dlbar').hidden = true;
+  if (!queue.length) { $('#dlbar').hidden = true; N.setBackgroundMode(false); }
   if (location.hash === '#/downloads') renderDownloads();
   runQueue();
 }
@@ -310,27 +337,46 @@ function showBar() {
   if (active.total) $('#dltext').textContent = `${active.done}/${active.total} · ${active.album.title}${more}`;
   $('#dlfill').style.width = active.total ? `${(active.done / active.total) * 100}%` : '0';
 }
-$('#dlcancel').onclick = () => { queue.length = 0; active?.ctrl.abort(); };
+$('#dlcancel').onclick = () => { queue.length = 0; N.cancelDownloads(); };
 
-function renderDownloads() {
+async function renderDownloads() {
   const h = dlHistory();
+  const target = await getTarget();
   const label = { done: '✓ Saved', partial: '⚠ Some failed', cancelled: 'Cancelled', error: '✕ Failed' };
   app.innerHTML = `<h2>Downloads</h2>
     ${active ? `<p>Downloading <b>${esc(active.album.title)}</b>…</p>` : ''}
     ${queue.length ? `<p class="muted">${queue.length} album(s) waiting</p>` : ''}
-    <p class="muted small">Saved in your phone's <b>Pictures/Luscious</b> folder, so they show up in your gallery. Saved manga open offline in the reader. Tap Save again on an album to fill in any missing pictures.</p>
+    <p class="muted small">Saving to <b>${esc(target?.label || 'not set')}</b> · <a href="#/settings">change</a><br>Downloads are hidden from your Gallery. Saved albums open offline in the reader. Tap Save again on an album to fill in any missing pictures.</p>
     <div class="list">${h.map((x) => `<div class="item"><a href="#/album/${x.id}">${esc(x.title)}</a>
-      <span class="muted nowrap" title="${esc(x.error || x.folder || '')}">${label[x.status] || ''}${x.status === 'done' ? ` (${x.count})` : x.failed ? ` (${x.failed})` : ''}</span></div>`).join('') || '<p class="muted">Nothing downloaded yet.</p>'}</div>
+      <span class="muted nowrap" title="${esc(x.error || x.folder || '')}">${label[x.status] || ''}${x.status === 'done' ? ` (${x.count})` : x.failed ? ` (${x.failed})` : ''}${x.target ? ` <button class="linkish" data-del="${x.id}">delete</button>` : ''}</span></div>`).join('') || '<p class="muted">Nothing downloaded yet.</p>'}</div>
     ${h.length ? '<div class="center"><button id="clearH">Clear list</button></div>' : ''}`;
-  $('#clearH')?.addEventListener('click', () => { store.set('ldl_history', []); renderDownloads(); });
+  $('#clearH')?.addEventListener('click', () => { if (confirm('Clear the list? (Saved files stay on your phone.)')) { store.set('ldl_history', []); renderDownloads(); } });
+  app.querySelectorAll('[data-del]').forEach((b) => (b.onclick = async () => {
+    if (!confirm('Delete this album from your phone?')) return;
+    b.disabled = true; await deleteSaved(b.dataset.del); renderDownloads();
+  }));
 }
 
 // ---------- settings ----------
-function renderSettings() {
+async function renderSettings() {
   const p = prefs();
   const rp = readerPrefs();
   const me = store.get('ldl_user', null);
+  const target = await getTarget();
+  const vols = await N.getVolumes().catch(() => []);
   app.innerHTML = `<h2>Settings</h2>
+    <div class="box">
+      <h3>Save downloads to</h3>
+      ${N.hasNative ? `
+      ${vols.map((v) => `<label class="switch"><input type="radio" name="loc" value="app:${v.index}" ${target?.type === 'app' && target.index === v.index ? 'checked' : ''}>
+        <span>${esc(v.label)} – app folder<br><span class="muted small">${fmtBytes(v.free)} free</span></span></label>`).join('')}
+      <label class="switch"><input type="radio" name="loc" value="tree" ${target?.type === 'tree' ? 'checked' : ''}>
+        <span>${target?.type === 'tree' ? esc(target.label) : 'A folder I choose…'}</span></label>
+      <button id="pickFolder">Choose folder (phone or SD card)…</button>
+      <p class="muted small">Downloads never appear in your Gallery.<br>
+      <b>App folder:</b> no setup needed, but Android deletes it if you uninstall the app (updating is fine).<br>
+      <b>Folder you choose:</b> kept even if you uninstall. Tip: on your SD card, create a folder like “Luscious” and pick it.</p>` : '<p class="muted small">Only available in the Android app.</p>'}
+    </div>
     <div class="box">
       <h3>Show these (hidden by default)</h3>
       ${Object.entries(HIDE_RULES).map(([k, r]) => `<label class="switch"><input type="checkbox" data-show="${k}" ${p.show[k] ? 'checked' : ''}><span>${r.label}</span></label>`).join('')}
@@ -350,6 +396,8 @@ function renderSettings() {
       <label class="switch"><input type="checkbox" id="invert" ${rp.invertTaps ? 'checked' : ''}><span>Invert tap zones</span></label>
       <label class="switch"><input type="checkbox" id="awake" ${rp.keepAwake ? 'checked' : ''}><span>Keep screen on while reading</span></label>
       <label class="switch"><input type="checkbox" id="pnum" ${rp.showPageNum ? 'checked' : ''}><span>Show page number</span></label>
+      <label class="switch"><input type="checkbox" id="volkeys" ${rp.volumeKeys ? 'checked' : ''}><span>Volume keys turn pages</span></label>
+      <label class="switch"><input type="checkbox" id="fullscr" ${rp.fullscreen ? 'checked' : ''}><span>Hide status bar while reading</span></label>
     </div>
     <div class="box">
       <h3>Account</h3>
@@ -368,6 +416,25 @@ function renderSettings() {
   $('#invert').onchange = (e) => rset('invertTaps', e.target.checked);
   $('#awake').onchange = (e) => rset('keepAwake', e.target.checked);
   $('#pnum').onchange = (e) => rset('showPageNum', e.target.checked);
+  $('#volkeys').onchange = (e) => rset('volumeKeys', e.target.checked);
+  $('#fullscr').onchange = (e) => rset('fullscreen', e.target.checked);
+  const pick = async () => {
+    try {
+      const r = await N.pickFolder();
+      if (r?.uri) store.set('ldl_storage', { type: 'tree', uri: r.uri, label: r.name || 'Chosen folder' });
+    } catch {}
+    renderSettings();
+  };
+  $('#pickFolder')?.addEventListener('click', pick);
+  app.querySelectorAll('input[name=loc]').forEach((r) => (r.onchange = () => {
+    if (r.value === 'tree') {
+      const prev = store.get('ldl_storage_tree', null);
+      return prev ? (store.set('ldl_storage', prev), renderSettings()) : pick();
+    }
+    const v = vols.find((x) => `app:${x.index}` === r.value);
+    store.set('ldl_storage', { type: 'app', index: v.index, label: `${v.label} (app folder)` });
+  }));
+  if (target?.type === 'tree') store.set('ldl_storage_tree', target);
   $('#clearProgress').onclick = (e) => { store.set('ldl_progress', {}); e.target.textContent = 'Cleared'; };
 }
 

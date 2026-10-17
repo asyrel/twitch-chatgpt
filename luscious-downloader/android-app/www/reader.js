@@ -1,8 +1,10 @@
+import { setReading, onVolumeKey } from './native.js';
+
 // Full-screen reader for manga and picture albums.
 // Paged (left-to-right / right-to-left) with pinch & double-tap zoom, or a continuous long strip.
 
 const PREFS_KEY = 'ldl_reader';
-const DEFAULTS = { fit: 'screen', bg: 'black', invertTaps: false, keepAwake: true, preload: 4, showPageNum: true };
+const DEFAULTS = { fit: 'screen', bg: 'black', invertTaps: false, keepAwake: true, preload: 4, showPageNum: true, volumeKeys: true, fullscreen: true };
 export function readerPrefs() {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') }; } catch { return { ...DEFAULTS }; }
 }
@@ -127,6 +129,8 @@ export function openReader({ title = '', pages, start = 0, mode = 'ltr', onPage,
     window.removeEventListener('popstate', onPop);
     document.removeEventListener('visibilitychange', onVisibility);
     wakeLock?.release?.().catch(() => {});
+    onVolumeKey(null);
+    setReading(false);
     if (!silent) onClose?.(index);
   }
   const api = { close };
@@ -139,6 +143,9 @@ export function openReader({ title = '', pages, start = 0, mode = 'ltr', onPage,
   window.addEventListener('popstate', onPop);
   applyBg();
   requestWake();
+  setReading(true, { keepAwake: prefs.keepAwake, volumeKeys: prefs.volumeKeys, fullscreen: prefs.fullscreen });
+  // Volume down = next page, volume up = previous (like most Android manga readers).
+  onVolumeKey((dir) => (dir > 0 ? engine.next() : engine.prev()));
   startEngine();
   onPage?.(index);
   return api;
