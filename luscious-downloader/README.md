@@ -16,6 +16,7 @@ Android will ask you to allow installing apps from your browser the first time. 
 - hide gay (male/male), futa and furry albums by default, plus any tags you choose (Settings ⚙)
 - a manga reader: right-to-left, left-to-right or long strip; tap zones and swipes; pinch and double-tap zoom; fit screen or width; page slider; preloading; keeps the screen on; remembers your page ("Continue reading"); reads saved albums offline
 - **artist tools** (📚 Library):
+  - *reference finder* (🔎 Refs): tap a body part, clothing item, pose, camera angle, expression or lighting mood (or type anything) to browse matching images; uses single-picture search when luscious allows it, otherwise albums with a strip of their pages
   - *reference boards*: save single pages into named boards (Poses, Hands, Lighting…), kept offline with a link back to the album and uploader
   - *drawing study tools* in the viewer: mirror, grayscale, 4-tone value study, proportion grid (3×3 / 4×4 / 6×6), color palette and color picker (hex + HSV)
   - *gesture drawing practice*: timed random images (30s–10m) from a board, a section or your favorites, with skip/pause, volume-key skip and a session summary

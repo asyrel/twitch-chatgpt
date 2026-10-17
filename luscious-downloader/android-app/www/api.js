@@ -97,6 +97,9 @@ async function gql(operationName, query, variables) {
     if (!json.errors?.length) return json.data;
     const bad = json.errors.map((e) => e.message?.match(/Cannot query field ["'](\w+)["']/)?.[1]).filter(Boolean);
     if (!bad.length || bad.every((f) => unknownFields.has(f))) throw new Error(json.errors.map((e) => e.message).join('; '));
+    // Never strip the top-level groups every query relies on; just report the error instead.
+    const PROTECTED = ['album', 'picture', 'userprofile', 'user', 'media_categories', 'list', 'get', 'items', 'info', 'id'];
+    if (bad.some((f) => PROTECTED.includes(f))) throw new Error(json.errors.map((e) => e.message).join('; '));
     bad.forEach((f) => unknownFields.add(f));
   }
   throw new Error('Luscious API query failed');
@@ -318,6 +321,61 @@ export async function getProfile(userId) {
   };
 }
 
+// ---------- picture-level search (for the reference finder) ----------
+const PIC_SEARCH_Q = `query PictureSearch($input: PictureListInput!) {
+  picture { list(input: $input) {
+    info { page has_next_page total_items }
+    items { id title is_animated url_to_original url_to_video thumbnails { width url } tags { text } album { id title } }
+  } }
+}`;
+function normPicture(p) {
+  return {
+    id: String(p.id), title: p.title || '', animated: !!p.is_animated,
+    original: absUrl(p.url_to_video || p.url_to_original),
+    large: p.url_to_video ? null : absUrl(largestThumb(p.thumbnails)),
+    thumb: absUrl(pickThumb(p.thumbnails) || p.url_to_original),
+    tags: (p.tags || []).map((t) => t.text).filter(Boolean),
+    album: p.album?.id ? { id: String(p.album.id), title: p.album.title || '' } : null,
+  };
+}
+async function pictureQuery(filters, page, display = 'rating_all_time') {
+  const d = await gql('PictureSearch', PIC_SEARCH_Q, { input: { display, filters, page } });
+  const list = d?.picture?.list;
+  if (!list) throw new Error('no picture list');
+  return { info: list.info, items: (list.items || []).filter((x) => x?.id).map(normPicture) };
+}
+// Which filter (if any) luscious accepts for searching single pictures. Checked once, cached.
+let picStrategy = null;
+async function pictureStrategy() {
+  if (picStrategy) return picStrategy;
+  try {
+    const c = JSON.parse(ls.get('ldl_picsearch') || 'null');
+    if (c && Date.now() - c.at < 7 * 864e5) return (picStrategy = c.s);
+  } catch {}
+  let base = null;
+  try { base = (await pictureQuery([], 1)).items.map((x) => x.id).join(','); } catch {}
+  let found = 'none';
+  for (const [name, value] of [['search_query', 'stockings'], ['tagged', '+stockings'], ['tagged', 'stockings']]) {
+    try {
+      const r = await pictureQuery([{ name, value }], 1);
+      const ids = r.items.map((x) => x.id).join(',');
+      if (ids && ids !== base) { found = `${name}|${value.startsWith('+') ? '+' : ''}`; break; }
+    } catch {}
+  }
+  ls.set('ldl_picsearch', JSON.stringify({ at: Date.now(), s: found }));
+  return (picStrategy = found);
+}
+// Search single pictures by term. Returns null if luscious doesn't support it (use album search instead).
+export async function searchPictures(term, page = 1) {
+  const s = await pictureStrategy();
+  if (s === 'none') return null;
+  const [name, prefix] = s.split('|');
+  const value = name === 'tagged' ? prefix + term.trim().toLowerCase().replace(/\s+/g, '_') : term;
+  return pictureQuery([{ name, value }], page);
+}
+// First page of an album's pictures (up to ~50), for previews.
+export const firstPictures = (albumId) => getAllPictures(albumId, null, 1);
+
 // ---------- signed-in user ----------
 // luscious.net doesn't document a "current user" query, so look for one in the API schema.
 const TYPE_Q = `query LdlType($name: String!) { __type(name: $name) { name kind fields { name args { name type { kind } } type { kind name ofType { kind name ofType { kind name } } } } } }`;
@@ -525,9 +583,9 @@ function pickThumb(thumbs) {
   return (sorted.find((t) => (t.width || 0) >= 300) || sorted[sorted.length - 1])?.url ?? null;
 }
 
-export async function getAllPictures(albumId, onProgress) {
+export async function getAllPictures(albumId, onProgress, maxPages = 1000) {
   const all = [];
-  for (let page = 1; page < 1000; page++) {
+  for (let page = 1; page <= maxPages; page++) {
     const data = await gql('AlbumListOwnPictures', PICTURES_QUERY, {
       input: { filters: [{ name: 'album_id', value: String(albumId) }], display: 'position', page },
     });

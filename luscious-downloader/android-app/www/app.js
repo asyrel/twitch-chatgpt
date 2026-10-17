@@ -5,6 +5,7 @@ import { $, app, esc, store, loading, imgTag, fmtBytes } from './util.js';
 import { renderBoards, renderBoard, addToBoard } from './boards.js';
 import { renderPractice } from './gesture.js';
 import { renderArtists, renderArtist, artistHref, checkNew } from './artists.js';
+import { renderRefs, renderRefResults } from './refs.js';
 
 function showError(e) {
   const details = e?.details?.length ? `<details><summary>Details</summary><pre class="log">${esc(e.details.join('\n'))}</pre></details>` : '';
@@ -562,7 +563,7 @@ async function renderSettings() {
 // ---------- library (boards, artists, favorites, downloads) ----------
 let newArtists = 0;
 function libraryNav(active) {
-  const tabs = { boards: '🎨 Boards', artists: `👤 Artists${newArtists ? ` <span class="newbadge">${newArtists}</span>` : ''}`, favorites: '♥ Favorites', downloads: '⬇ Saved' };
+  const tabs = { refs: '🔎 Refs', boards: '🎨 Boards', artists: `👤 Artists${newArtists ? ` <span class="newbadge">${newArtists}</span>` : ''}`, favorites: '♥ Favorites', downloads: '⬇ Saved' };
   return `<div class="chips libnav">${Object.entries(tabs).map(([k, v]) => `<a class="chip ${k === active ? 'on' : ''}" href="#/${k}">${v}</a>`).join('')}</div>`;
 }
 const refreshNewBadge = () => checkNew().then((n) => {
@@ -582,7 +583,7 @@ function route() {
   if (readerOpen()) closeReader();
   const [, kind = '', a = '', b = ''] = location.hash.split('/');
   if (SECTIONS[kind]) section = kind;
-  const LIB = ['library', 'favorites', 'downloads', 'boards', 'board', 'practice', 'artists', 'artist', 'login'];
+  const LIB = ['library', 'favorites', 'downloads', 'boards', 'board', 'practice', 'artists', 'artist', 'login', 'refs'];
   const tab = SECTIONS[kind] ? kind : LIB.includes(kind) ? 'library' : kind === 'settings' ? 'settings' : kind === 'album' || kind === 'read' ? null : 'hentai';
   if (tab) document.querySelectorAll('nav a').forEach((n) => n.classList.toggle('on', n.dataset.tab === tab));
   window.scrollTo(0, 0);
@@ -594,7 +595,11 @@ function route() {
   if (kind === 'downloads') return renderDownloads();
   if (kind === 'settings') return renderSettings();
   if (kind === 'login') return renderLogin(a ? decodeURIComponent(a) : '#/favorites');
-  if (kind === 'library' || kind === 'boards') return renderBoards(ctx);
+  if (kind === 'library' || kind === 'refs') {
+    const [, , sec, term, label] = location.hash.split('/');
+    return term ? renderRefResults(sec, decodeURIComponent(term), decodeURIComponent(label || ''), ctx) : renderRefs(ctx);
+  }
+  if (kind === 'boards') return renderBoards(ctx);
   if (kind === 'board') return renderBoard(a, ctx);
   if (kind === 'practice') return renderPractice(ctx, a === 'board' && b ? { source: `board:${b}` } : {});
   if (kind === 'artists') { refreshNewBadge(); return renderArtists(ctx); }
