@@ -80,6 +80,28 @@ async function postJson(path, body) {
   );
 }
 
+// Plain GET returning JSON (used for the art sites). Goes through native HTTP in the app.
+export async function getJson(url, headers = {}) {
+  const h = { Accept: 'application/json', 'User-Agent': UA, ...headers };
+  let status, text;
+  if (Http) {
+    const r = await Http.request({ url, method: 'GET', headers: h, responseType: 'text' });
+    status = r.status;
+    text = typeof r.data === 'string' ? r.data : JSON.stringify(r.data);
+  } else {
+    const r = await fetch(url);
+    status = r.status;
+    text = await r.text();
+  }
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch {}
+  if (status >= 400 || (json === null && text)) {
+    const msg = json?.message || json?.reason || (text || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+    throw Object.assign(new Error(`${new URL(url).host}: HTTP ${status}${msg ? ` – ${msg}` : ''}`), { status });
+  }
+  return json;
+}
+
 // Fields the live API rejected; they're dropped from later queries.
 const unknownFields = new Set();
 function stripFields(query) {
@@ -93,9 +115,12 @@ function stripFields(query) {
 
 async function gql(operationName, query, variables) {
   for (let attempt = 0; attempt < 6; attempt++) {
-    const json = await postJson(`?operationName=${operationName}`, { id: 1, operationName, query: stripFields(query), variables });
+    const sent = stripFields(query);
+    const json = await postJson(`?operationName=${operationName}`, { id: 1, operationName, query: sent, variables });
     if (!json.errors?.length) return json.data;
     const bad = json.errors.map((e) => e.message?.match(/Cannot query field ["'](\w+)["']/)?.[1]).filter(Boolean);
+    // Another request may have learned about the bad field while this one was in flight: just retry.
+    if (bad.length && stripFields(query) !== sent) continue;
     if (!bad.length || bad.every((f) => unknownFields.has(f))) throw new Error(json.errors.map((e) => e.message).join('; '));
     // Never strip the top-level groups every query relies on; just report the error instead.
     const PROTECTED = ['album', 'picture', 'userprofile', 'user', 'media_categories', 'list', 'get', 'items', 'info', 'id'];

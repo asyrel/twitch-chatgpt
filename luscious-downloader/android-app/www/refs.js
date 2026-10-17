@@ -2,6 +2,8 @@
 import * as L from './api.js';
 import { $, app, esc, store, imgTag, toast } from './util.js';
 import { addToBoard } from './boards.js';
+import * as B from './boorus.js';
+import { openPosts, postHidden } from './art.js';
 
 // label -> luscious search term
 export const REF_GROUPS = {
@@ -16,10 +18,11 @@ export const REF_GROUPS = {
 };
 
 export function renderRefs(ctx) {
-  const sec = store.get('ldl_ref_sec', 'hentai');
+  let sec = store.get('ldl_ref_sec', 'art');
+  if (!['art', 'hentai'].includes(sec)) sec = 'art';
   const recent = store.get('ldl_ref_recent', []);
   app.innerHTML = `${ctx.libraryNav('refs')}
-    <div class="chips" style="margin-bottom:10px">${['hentai', 'real'].map((s) => `<button data-sec="${s}" class="${s === sec ? 'on' : ''}">${s === 'hentai' ? 'Hentai / drawn' : 'Real'}</button>`).join('')}</div>
+    <div class="chips" style="margin-bottom:10px">${[['art', 'Art sites (best for refs)'], ['hentai', 'Luscious']].map(([s, v]) => `<button data-sec="${s}" class="${s === sec ? 'on' : ''}">${v}</button>`).join('')}</div>
     <form id="refQ" class="row" style="margin-top:0"><input name="q" placeholder="Find refs for… (e.g. hands holding, side braid)" autocomplete="off" style="flex:1"><button class="primary">Find</button></form>
     ${recent.length ? `<h3 class="refh">Recent</h3><div class="chips wrap">${recent.map((t) => `<a class="chip" href="#/refs/${sec}/${encodeURIComponent(t)}">${esc(t)}</a>`).join('')}</div>` : ''}
     ${Object.entries(REF_GROUPS).map(([g, items]) => `<h3 class="refh">${esc(g)}</h3>
@@ -44,6 +47,7 @@ export async function renderRefResults(sec, term, label, ctx) {
   const title = esc(label || term);
   const head = `${ctx.libraryNav('refs')}<div class="row" style="margin-top:0;justify-content:space-between"><h2 style="margin:0">🔎 ${title}</h2><a class="btn" href="#/refs">All categories</a></div>`;
   app.innerHTML = head + '<div class="center"><div class="spinner"></div></div>';
+  if (sec === 'art') return artGrid(term, title, head, ctx);
   let pics = null;
   try { pics = await L.searchPictures(term, 1); } catch { pics = null; }
   if (pics && pics.items.length) return pictureGrid(sec, term, title, head, pics, ctx);
@@ -132,4 +136,31 @@ function openAlbumAt(row, i, ctx) {
     pages: row.pics.map((p) => ({ src: p.original, fallback: p.large })),
     onAddToBoard: (k) => addToBoard(row.album, row.pics[k], k, ctx),
   });
+}
+
+// Art sites: every result is a single tagged image, so the tag maps straight to the body part / pose.
+async function artGrid(term, title, head, ctx) {
+  const sites = B.enabledSites();
+  const tag = B.booruTag(term);
+  const items = [];
+  let page = 0, more = true, errors = [];
+  const load = async () => {
+    let added = 0;
+    for (let tries = 0; tries < 3 && more && added < 20; tries++) {
+      const r = await B.searchAll(sites, tag, ++page, 'top');
+      errors = r.errors; more = r.more;
+      for (const x of r.items) if (!postHidden(x, ctx) && !items.some((y) => y.key === x.key)) { items.push(x); added++; }
+    }
+  };
+  const draw = () => {
+    app.innerHTML = `${head}<p class="muted small">Top-rated art tagged <b>${esc(tag)}</b>. Tap to study, then ＋ Board to keep it.</p>
+      ${errors.length ? `<details class="small"><summary>⚠ ${errors.length} site${errors.length > 1 ? 's' : ''} didn't respond</summary><pre class="log">${esc(errors.join('\n'))}</pre></details>` : ''}
+      ${items.length ? `<div class="grid thumbs">${items.map((x, i) => `<div class="thumb" data-i="${i}">${imgTag(x.thumb || x.sample)}</div>`).join('')}</div>` : '<p class="muted">Nothing found.</p>'}
+      ${more ? '<div class="center"><button id="moreR">Load more</button></div>' : ''}`;
+    app.querySelectorAll('.thumb').forEach((t) => (t.onclick = () => openPosts(items, +t.dataset.i, `Refs: ${title}`, ctx)));
+    $('#moreR')?.addEventListener('click', async (e) => { e.target.disabled = true; e.target.textContent = 'Loading…'; await load(); draw(); });
+  };
+  if (!sites.length) return ctx.showError(new Error('No art sites are turned on (⚙ Settings → Art sites).'));
+  try { await load(); } catch (e) { return ctx.showError(e); }
+  draw();
 }

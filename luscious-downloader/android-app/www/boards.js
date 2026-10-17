@@ -36,7 +36,7 @@ export function pickBoard(title = 'Save to board') {
   }).then((b) => { if (b) store.set('ldl_last_board', b.id); return b; });
 }
 
-const fileStem = (it) => `${it.albumId}_${it.pictureId}`;
+const fileStem = (it) => `${it.albumId}_${it.pictureId}`.replace(/[:/\\?*"<>|]/g, '-');
 function fileNameFor(it) {
   let ext = '.jpg';
   try { ext = (new URL(it.original).pathname.match(/\.[a-z0-9]{2,5}$/i) || ['.jpg'])[0].toLowerCase(); } catch {}
@@ -70,7 +70,7 @@ export async function addToBoard(album, picture, index, ctx) {
   if (d.items.some((i) => i.boardId === board.id && i.pictureId === picture.id && i.albumId === album.id)) return board.name;
   const item = {
     id: uid(), boardId: board.id, addedAt: Date.now(),
-    albumId: album.id, albumTitle: album.title, author: album.author, authorId: album.authorId,
+    albumId: album.id, albumTitle: album.title, author: album.author, authorId: album.authorId, pageUrl: album.pageUrl || null,
     page: index, pictureId: picture.id, original: picture.original, large: picture.large || null, thumb: picture.thumb,
   };
   d.items.push(item);
@@ -155,7 +155,7 @@ export async function renderBoard(id, ctx) {
       const it = items[i];
       await sheet(`<h3>${esc(it.albumTitle || 'Image')}</h3>
         <p class="muted small">Page ${it.page + 1}${it.author ? ` · by ${esc(it.author)}` : ''}</p>
-        <button class="opt" data-a="open">Open source album</button>
+        ${it.pageUrl ? `<a class="opt btn" href="${esc(it.pageUrl)}" target="_blank" rel="noopener">Open post on ${esc(it.albumTitle.split(' #')[0])}</a>` : '<button class="opt" data-a="open">Open source album</button>'}
         ${it.authorId ? '<button class="opt" data-a="artist">Open uploader</button>' : ''}
         <button class="opt" data-a="move">Move to another board</button>
         <button class="opt" data-a="remove" style="color:#ff7b9c">Remove from board</button>`, (el, close) => {

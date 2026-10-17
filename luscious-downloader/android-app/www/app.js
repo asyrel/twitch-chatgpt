@@ -6,6 +6,8 @@ import { renderBoards, renderBoard, addToBoard } from './boards.js';
 import { renderPractice } from './gesture.js';
 import { renderArtists, renderArtist, artistHref, checkNew } from './artists.js';
 import { renderRefs, renderRefResults } from './refs.js';
+import { renderArt } from './art.js';
+import * as B from './boorus.js';
 
 function showError(e) {
   const details = e?.details?.length ? `<details><summary>Details</summary><pre class="log">${esc(e.details.join('\n'))}</pre></details>` : '';
@@ -31,9 +33,16 @@ const HIDE_RULES = {
 const prefs = () => ({ show: { gay: false, futa: false, furry: false }, hideTags: [], mangaMode: 'rtl', compression: 'lossless', ...store.get('ldl_prefs', {}) });
 const setPrefs = (p) => store.set('ldl_prefs', p);
 
+// Always blocked, on every site, and not adjustable: anything involving minors.
+export const BLOCKED = /\b(loli|lolicon|shota|shotacon|toddlercon|toddler|child|children|kid|kids|underage|minor|young_girl|young_boy|little_girl|little_boy|young|preteen|teen|teenage|aged_down|baby|infant|elementary|middle_school|cub)\b/i;
+
 // Returns why an album is hidden ('Gay', 'tag: x', ...) or null if it should be shown.
 function hiddenReason(album, p = prefs()) {
-  const labels = [...album.audiences, ...album.genres, ...album.tags];
+  const labels = [...(album.audiences || []), ...(album.genres || []), ...(album.tags || [])];
+  if (labels.some((l) => BLOCKED.test(String(l).replace(/[\s-]+/g, '_')))) return 'Blocked content';
+  // Only drawn / animated / artwork: real-life photo albums are never shown.
+  if (album.content && L.contentKind(album) === 'real') return 'Real photos';
+  if (labels.some((l) => /^(photo_\(medium\)|real_life|photo|cosplay_photo|real people)$/i.test(String(l).replace(/\s+/g, '_')))) return 'Real photos';
   for (const [key, rule] of Object.entries(HIDE_RULES)) {
     if (!p.show[key] && labels.some((l) => rule.re.test(l))) return rule.label;
   }
@@ -79,7 +88,7 @@ function saveProgress(album, page, total, extra = {}) {
 let section = 'hentai';
 const SECTIONS = {
   hentai: { title: 'Hentai', placeholder: 'Search hentai or paste link…' },
-  real: { title: 'Real', placeholder: 'Search real or paste link…' },
+  art: { title: 'Art', placeholder: 'Search art tags, e.g. thighhighs smile…' },
   manga: { title: 'Manga', placeholder: 'Search manga or paste link…' },
 };
 $('#search').addEventListener('submit', (e) => {
@@ -87,6 +96,7 @@ $('#search').addEventListener('submit', (e) => {
   const v = $('#q').value.trim();
   $('#q').blur();
   if (L.looksLikeAlbum(v)) location.hash = '#/album/' + encodeURIComponent(v);
+  else if (section === 'art') location.hash = `#/art/${encodeURIComponent(v)}`;
   else location.hash = `#/${SECTIONS[section] ? section : 'hentai'}/${encodeURIComponent(v)}/${v ? '' : store.get('ldl_sort', '')}`;
 });
 
@@ -94,7 +104,7 @@ $('#search').addEventListener('submit', (e) => {
 let sortValues = ['date_trending', 'date_newest', 'rating_all_time', 'search_score'];
 L.getSortOptions().then((v) => {
   sortValues = v;
-  if (listState?.section && !document.querySelector('.reader')) draw();
+  if (listState?.section && !listState.loading && !document.querySelector('.reader')) draw();
 });
 // Two rows of buttons: what to sort by, then (if it applies) the time range.
 function sortBar(sec, q, current) {
@@ -132,6 +142,10 @@ async function renderList(state) {
 // Keeps fetching pages until there's a screenful of albums left after filtering.
 async function loadMore() {
   const s = listState;
+  s.loading = true;
+  try { await loadMoreInner(s); } finally { s.loading = false; }
+}
+async function loadMoreInner(s) {
   let added = 0, fetched = 0;
   while (s.hasNext && added < 12 && fetched < 5) {
     s.page++; fetched++;
@@ -248,7 +262,7 @@ function renderFavorites() {
   const me = store.get('ldl_user', null);
   if (!me && !loginState()?.signedIn && !store.get('ldl_skip_login', false) && N.hasNative) return renderLogin('#/favorites');
   if (!me) return renderProfileForm();
-  const chips = { all: 'All', hentai: 'Hentai', real: 'Real', manga: 'Manga' };
+  const chips = { all: 'All', hentai: 'Hentai', manga: 'Manga' };
   const state = {
     title: `♥ ${esc(me.name)}'s favorites`,
     empty: 'No favorites here.',
@@ -349,7 +363,7 @@ async function renderAlbum(ref) {
           ${savedEntry(album.id) ? `<div class="muted small">✓ Saved to ${esc(savedEntry(album.id).target.label)} · <button id="delSaved" class="linkish">Delete from phone</button></div>` : ''}
         </div>
       </div>
-      <div class="row">${tags.map((t) => `<a class="tag" href="#/${album.isManga ? 'manga' : L.contentKind(album) === 'real' ? 'real' : 'hentai'}/${encodeURIComponent(t)}/">${esc(t)}</a>`).join('')}</div>
+      <div class="row">${tags.map((t) => `<a class="tag" href="#/${album.isManga ? 'manga' : 'hentai'}/${encodeURIComponent(t)}/">${esc(t)}</a>`).join('')}</div>
       <div class="grid thumbs">${pictures.map((p, i) => `<div class="thumb" data-i="${i}">${imgTag(p.thumb)}<span>${i + 1}</span></div>`).join('')}</div>`;
     $('#read').onclick = () => startReading(album, pictures, prog?.page || 0);
     $('#restart')?.addEventListener('click', () => startReading(album, pictures, 0));
@@ -490,8 +504,22 @@ async function renderSettings() {
       <p class="muted small"><b>Lossless</b> keeps every pixel and the full size: PNG pages are re-packed as lossless WebP (often 25–50% smaller); JPEGs are kept exactly as they are. The other options save more space by re-encoding. Pages are never cropped, and GIFs and videos are never changed.</p>
     </div>
     <div class="box">
+      <h3>Art sites</h3>
+      ${Object.entries(B.SITES).map(([k, v]) => `<label class="switch"><input type="checkbox" data-site="${k}" ${B.booruPrefs().enabled[k] ? 'checked' : ''}><span>${v.name}</span></label>`).join('')}
+      <label style="margin-top:8px">Content</label>
+      <select id="bRatings"><option value="nsfw">NSFW (explicit + questionable)</option><option value="explicit">Explicit only</option></select>
+      <details><summary>Accounts (optional, for better results)</summary>
+        <p class="muted small">Danbooru: without an API key, searches are limited to 2 tags. Gelbooru may require a key. Find them in your account settings on each site.</p>
+        <label>Danbooru username</label><input id="dbU" autocomplete="off" autocapitalize="none">
+        <label>Danbooru API key</label><input id="dbK" autocomplete="off" autocapitalize="none">
+        <label>Gelbooru user ID</label><input id="gbU" autocomplete="off" inputmode="numeric">
+        <label>Gelbooru API key</label><input id="gbK" autocomplete="off" autocapitalize="none">
+      </details>
+    </div>
+    <div class="box">
       <h3>Show these (hidden by default)</h3>
       ${Object.entries(HIDE_RULES).map(([k, r]) => `<label class="switch"><input type="checkbox" data-show="${k}" ${p.show[k] ? 'checked' : ''}><span>${r.label}</span></label>`).join('')}
+      <p class="muted small">Real-life photos are never shown, and anything involving minors is always blocked on every site.</p>
       <label style="margin-top:12px">Also hide albums with these tags (comma separated)</label>
       <input id="hideTags" value="${esc(p.hideTags.join(', '))}" placeholder="e.g. guro, scat">
     </div>
@@ -522,6 +550,15 @@ async function renderSettings() {
       <button id="clearProgress">Clear reading history</button>
     </div>`;
   $('#fit').value = rp.fit; $('#bg').value = rp.bg;
+  {
+    const bp = B.booruPrefs();
+    $('#bRatings').value = bp.ratings;
+    $('#dbU').value = bp.danbooruUser; $('#dbK').value = bp.danbooruKey; $('#gbU').value = bp.gelbooruUser; $('#gbK').value = bp.gelbooruKey;
+    const bset = (f) => { const x = B.booruPrefs(); f(x); B.saveBooruPrefs(x); };
+    app.querySelectorAll('[data-site]').forEach((c) => (c.onchange = () => bset((x) => { x.enabled[c.dataset.site] = c.checked; })));
+    $('#bRatings').onchange = (e) => bset((x) => { x.ratings = e.target.value; });
+    for (const [id, key] of [['dbU', 'danbooruUser'], ['dbK', 'danbooruKey'], ['gbU', 'gelbooruUser'], ['gbK', 'gelbooruKey']]) $('#' + id).onchange = (e) => bset((x) => { x[key] = e.target.value.trim(); });
+  }
   app.querySelectorAll('[data-show]').forEach((c) => (c.onchange = () => { const x = prefs(); x.show[c.dataset.show] = c.checked; setPrefs(x); }));
   $('#hideTags').onchange = (e) => { const x = prefs(); x.hideTags = e.target.value.split(',').map((t) => t.trim()).filter(Boolean); setPrefs(x); };
   $('#mangaMode').onchange = (e) => { const x = prefs(); x.mangaMode = e.target.value; setPrefs(x); };
@@ -581,14 +618,20 @@ const ctx = {
 // ---------- router ----------
 function route() {
   if (readerOpen()) closeReader();
+  listState = null; // any list still loading must not draw over the new screen
   const [, kind = '', a = '', b = ''] = location.hash.split('/');
   if (SECTIONS[kind]) section = kind;
   const LIB = ['library', 'favorites', 'downloads', 'boards', 'board', 'practice', 'artists', 'artist', 'login', 'refs'];
   const tab = SECTIONS[kind] ? kind : LIB.includes(kind) ? 'library' : kind === 'settings' ? 'settings' : kind === 'album' || kind === 'read' ? null : 'hentai';
   if (tab) document.querySelectorAll('nav a').forEach((n) => n.classList.toggle('on', n.dataset.tab === tab));
   window.scrollTo(0, 0);
-  if (!SECTIONS[kind]) $('#q').value = '';
+  if (!SECTIONS[kind] || kind === 'art') $('#q').value = '';
   $('#q').placeholder = SECTIONS[section]?.placeholder || '';
+  if (kind === 'art') {
+    const c = location.hash.split('/')[4];
+    $('#q').value = decodeURIComponent(a);
+    return renderArt(decodeURIComponent(a), b, c, ctx);
+  }
   if (kind === 'album') return renderAlbum(decodeURIComponent(a));
   if (kind === 'read') return renderRead(a, +b || 0);
   if (kind === 'favorites') return renderFavorites();

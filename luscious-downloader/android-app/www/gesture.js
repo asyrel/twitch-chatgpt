@@ -3,6 +3,8 @@ import * as L from './api.js';
 import * as N from './native.js';
 import { $, app, esc, store, imgTag, shuffle, toast } from './util.js';
 import { loadBoards, boardItems, pagesFor, addToBoard } from './boards.js';
+import * as B from './boorus.js';
+import { postHidden } from './art.js';
 
 const DURATIONS = [30, 45, 60, 120, 300, 600];
 const COUNTS = [5, 10, 20, 30, 0]; // 0 = no limit
@@ -15,7 +17,7 @@ export function renderPractice(ctx, preset = {}) {
   const sources = [
     ...d.boards.filter((b) => boardItems(b.id, d).length).map((b) => [`board:${b.id}`, `Board: ${b.name} (${boardItems(b.id, d).length})`]),
     ['section:hentai', 'Random pages – Hentai'],
-    ['section:real', 'Random pages – Real'],
+    ['art', 'Random art – art sites (optional tag below)'],
     ['section:manga', 'Random pages – Manga'],
     ...(store.get('ldl_user', null) ? [['favorites', 'Random pages – My favorites']] : []),
   ];
@@ -25,6 +27,7 @@ export function renderPractice(ctx, preset = {}) {
       <h3>✏️ Gesture drawing practice</h3>
       <label>Images from</label>
       <select id="gSource">${sources.map(([k, v]) => `<option value="${k}" ${k === opts.source ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>
+      <div id="gTagWrap" ${opts.source === 'art' ? '' : 'hidden'}><label>Tag (optional), e.g. <i>sitting</i>, <i>from_behind</i>, <i>hand_focus</i></label><input id="gTag" value="${esc(opts.tag || '')}" autocapitalize="none" autocomplete="off"></div>
       <label>Time per image</label>
       <div class="chips wrap">${DURATIONS.map((s) => `<button data-sec="${s}" class="${opts.seconds === s ? 'on' : ''}">${fmt(s)}</button>`).join('')}</div>
       <label style="margin-top:10px">Number of images</label>
@@ -35,11 +38,12 @@ export function renderPractice(ctx, preset = {}) {
       <button class="primary" id="gStart">Start · ${opts.count ? `${opts.count} × ${fmt(opts.seconds)} = ${fmt(opts.count * opts.seconds)}` : `${fmt(opts.seconds)} each`}</button>
     </div>
     <p class="muted small">Tip: 30s–1m for quick gestures, 2–5m for proportions, 10m for longer studies. Volume keys skip, the screen stays on.</p>`;
-  const save = () => store.set('ldl_practice', { seconds: opts.seconds, count: opts.count, flip: opts.flip, gray: opts.gray, grid: opts.grid });
+  const save = () => store.set('ldl_practice', { seconds: opts.seconds, count: opts.count, flip: opts.flip, gray: opts.gray, grid: opts.grid, tag: opts.tag });
   const rerender = () => { save(); renderPractice(ctx, { ...opts }); };
   app.querySelectorAll('[data-sec]').forEach((b) => (b.onclick = () => { opts.seconds = +b.dataset.sec; rerender(); }));
   app.querySelectorAll('[data-cnt]').forEach((b) => (b.onclick = () => { opts.count = +b.dataset.cnt; rerender(); }));
-  $('#gSource').onchange = (e) => { opts.source = e.target.value; };
+  $('#gSource').onchange = (e) => { opts.source = e.target.value; $('#gTagWrap').hidden = opts.source !== 'art'; };
+  $('#gTag').onchange = (e) => { opts.tag = e.target.value.trim(); };
   $('#gFlip').onchange = (e) => { opts.flip = e.target.checked; save(); };
   $('#gGray').onchange = (e) => { opts.gray = e.target.checked; save(); };
   $('#gGrid').onchange = (e) => { opts.grid = e.target.checked; save(); };
@@ -84,7 +88,28 @@ function listSource(fetchPage, ctx) {
   };
 }
 
-function makeSource(source, ctx) {
+// Random top-rated art from the image boards, optionally for one tag.
+function artSource(tag, ctx) {
+  let maxPage = 30;
+  let pool = [];
+  const seen = new Set();
+  return async () => {
+    for (let tries = 0; tries < 6 && !pool.length; tries++) {
+      const page = 1 + Math.floor(Math.random() * maxPage);
+      const r = await B.searchAll(B.enabledSites(), B.booruTag(tag || ''), page, 'top');
+      if (!r.items.length) { maxPage = Math.max(1, Math.floor(page / 2)); continue; }
+      pool = shuffle(r.items.filter((x) => !postHidden(x, ctx) && !seen.has(x.key)));
+    }
+    const x = pool.shift();
+    if (!x) return null;
+    seen.add(x.key);
+    const { album, picture } = B.asAlbumPicture(x);
+    return { src: x.sample || x.original, fallback: x.original, title: album.title, albumId: null, picture, album, index: 0 };
+  };
+}
+
+function makeSource(source, ctx, opts = {}) {
+  if (source === 'art') return artSource(opts.tag, ctx);
   if (source.startsWith('board:')) return boardSource(source.slice(6));
   if (source === 'favorites') {
     const me = store.get('ldl_user', null);
@@ -96,7 +121,7 @@ function makeSource(source, ctx) {
 
 // ---------- session ----------
 function startSession(opts, ctx) {
-  const next = makeSource(opts.source, ctx);
+  const next = makeSource(opts.source, ctx, opts);
   const shown = [];
   let cur = null, left = opts.seconds, paused = false, timer = null, upcoming = null, n = 0, ended = false;
 
@@ -198,6 +223,6 @@ function summary(shown, opts, ctx) {
       <p class="small">${shown.length} image${shown.length === 1 ? '' : 's'} · ${fmt(total)} of drawing</p>
       <div class="row"><button class="primary" id="again">Go again</button><a class="btn" href="#/practice">Change settings</a></div>
     </div>
-    <div class="grid thumbs">${shown.map((s) => `<a class="thumb" href="#/album/${s.albumId}">${imgTag(s.picture?.thumb || s.src)}<span>${fmt(s.spent || 0)}</span></a>`).join('')}</div>`;
+    <div class="grid thumbs">${shown.map((s) => `<a class="thumb" href="${s.albumId ? `#/album/${s.albumId}` : 'javascript:void(0)'}">${imgTag(s.picture?.thumb || s.src)}<span>${fmt(s.spent || 0)}</span></a>`).join('')}</div>`;
   $('#again').onclick = () => startSession(opts, ctx);
 }

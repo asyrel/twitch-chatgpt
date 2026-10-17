@@ -12,7 +12,7 @@ Install on your phone from this link (open it on the phone):
 
 Android will ask you to allow installing apps from your browser the first time. The app runs entirely on the phone, so no computer or server is needed. It can:
 
-- separate **Hentai**, **Real** and **Manga** tabs (uses luscious.net's own content types and album types)
+- **Hentai**, **Art** and **Manga** tabs. Art searches anime/hentai image boards (Danbooru, Gelbooru, Yande.re, Konachan) by tags. Real-life photos are never shown, and content involving minors is always blocked on every site
 - hide gay (male/male), futa and furry albums by default, plus any tags you choose (Settings ⚙)
 - a manga reader: right-to-left, left-to-right or long strip; tap zones and swipes; pinch and double-tap zoom; fit screen or width; page slider; preloading; keeps the screen on; remembers your page ("Continue reading"); reads saved albums offline
 - **artist tools** (📚 Library):
