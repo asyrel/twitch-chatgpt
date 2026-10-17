@@ -12,7 +12,9 @@ export const listAlbum = (target, folder) => call('listAlbum', { target, folder 
 export const deleteAlbum = (target, folder) => call('deleteAlbum', { target, folder });
 export const cancelDownloads = () => call('cancel', { all: true });
 export const setBackgroundMode = (active) => call('setBackgroundMode', { active }).catch(() => {});
-export const openVerify = (url) => call('openVerify', { url });
+export const openVerify = (url, hint) => call('openVerify', { url, hint });
+export const cookieNames = async (url = 'https://www.luscious.net/') => (await call('getCookieNames', { url }))?.names || [];
+export const clearCookies = () => call('clearCookies');
 export const setReading = (on, opts = {}) => call('setReading', { on, ...opts }).catch(() => {});
 
 export async function downloadAlbum({ target, folder, title, files, jobId, compress = null, userAgent, concurrency = 4, onProgress }) {

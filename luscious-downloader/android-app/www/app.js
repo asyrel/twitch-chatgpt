@@ -167,6 +167,27 @@ function continueRow() {
     </a>`).join('')}</div>`;
 }
 
+// ---------- luscious.net login ----------
+// Login happens on luscious.net's own page inside the app; the app only keeps the cookie it sets.
+const loginState = () => store.get('ldl_login', null);
+async function signIn() {
+  if (!N.hasNative) throw new Error('Sign in works in the Android app.');
+  await N.openVerify('https://www.luscious.net/', 'Log in on the site (tap Login / the person icon), then tap Done');
+  const names = await N.cookieNames();
+  const signedIn = names.some((n) => /^(sessionid|session|auth|token|jwt)/i.test(n));
+  if (!signedIn) { store.set('ldl_login', null); return { signedIn: false }; }
+  let user = null;
+  try { user = await L.currentUser(); } catch {}
+  store.set('ldl_login', { signedIn: true, at: Date.now(), name: user?.name || null });
+  if (user) store.set('ldl_user', { id: user.id, name: user.name });
+  return { signedIn: true, user };
+}
+async function signOut() {
+  await N.clearCookies().catch(() => {});
+  store.set('ldl_login', null);
+  store.set('ldl_user', null);
+}
+
 // ---------- favorites ----------
 function renderFavorites() {
   const me = store.get('ldl_user', null);
@@ -181,26 +202,40 @@ function renderFavorites() {
       : chip === 'manga' ? a.isManga
       : !a.isManga && L.contentKind(a) === chip,
     header: () => `<div class="chips">${Object.entries(chips).map(([k, v]) => `<button data-chip="${k}" class="${listState.chip === k ? 'on' : ''}">${v}</button>`).join('')}</div>
-      <div class="row"><button id="dlAll">⬇ Download all favorites</button><button id="changeUser">Change account</button></div>`,
+      <div class="row"><button id="dlAll">⬇ Download all favorites</button><button id="changeUser">${loginState()?.signedIn ? 'Account' : 'Change account'}</button></div>`,
     onRender() {
       app.querySelectorAll('[data-chip]').forEach((b) => (b.onclick = () => { listState.chip = b.dataset.chip; draw(); }));
-      $('#changeUser').onclick = () => { store.set('ldl_user', null); renderProfileForm(); };
+      $('#changeUser').onclick = () => (loginState()?.signedIn ? (location.hash = '#/settings') : (store.set('ldl_user', null), renderProfileForm()));
       $('#dlAll').onclick = downloadAllFavorites;
     },
   };
   renderList(state);
 }
 function renderProfileForm(error) {
+  const login = loginState();
   app.innerHTML = `<div class="box">
     <h2>Your favorites</h2>
+    ${login?.signedIn
+      ? `<p class="small">✓ Signed in to luscious.net. The app couldn't work out your account automatically, so paste your profile link below once.</p>`
+      : `<button class="primary" id="signInBtn">Sign in with your luscious account</button>
+         <p class="muted small" style="text-align:center;margin:12px 0">or, without signing in</p>`}
     <form id="pf">
       <label>Your luscious.net profile link or user ID</label>
       <input name="u" placeholder="https://www.luscious.net/users/123456/" required autocomplete="off">
-      <button class="primary" type="submit">Show my favorites</button>
+      <button type="submit">Show my favorites</button>
     </form>
     ${error ? `<div class="err" style="margin-top:12px">${esc(error)}</div>` : ''}
     <p class="muted small">No password needed. On luscious.net, open your profile and copy the link (it has a number in it, like <b>/users/123456/</b>).</p>
   </div>`;
+  $('#signInBtn')?.addEventListener('click', async (e) => {
+    e.target.disabled = true; e.target.textContent = 'Opening luscious.net…';
+    try {
+      const r = await signIn();
+      if (!r.signedIn) return renderProfileForm("You don't seem to be logged in yet. Log in on the site, then tap Done.");
+      if (r.user) return renderFavorites();
+      renderProfileForm();
+    } catch (err) { renderProfileForm(err.message); }
+  });
   $('#pf').addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = L.parseUserId(new FormData(e.target).get('u'));
@@ -427,9 +462,13 @@ async function renderSettings() {
       <label class="switch"><input type="checkbox" id="fullscr" ${rp.fullscreen ? 'checked' : ''}><span>Hide status bar while reading</span></label>
     </div>
     <div class="box">
-      <h3>Account</h3>
-      <p class="muted small">${me ? `Favorites from <b>${esc(me.name)}</b> (user ${esc(me.id)})` : 'No profile set.'}</p>
-      <a class="btn" href="#/favorites">${me ? 'Open favorites' : 'Set profile'}</a>
+      <h3>luscious.net account</h3>
+      <p class="small">${loginState()?.signedIn ? `✓ Signed in${me ? ` as <b>${esc(me.name)}</b>` : ''}` : 'Not signed in'}</p>
+      ${loginState()?.signedIn
+        ? '<button id="signOutBtn">Sign out</button>'
+        : '<button class="primary" id="signInBtn2">Sign in</button><p class="muted small">Opens luscious.net\'s own login page in the app. Your password only goes to luscious.net.</p>'}
+      <p class="muted small" style="margin-top:10px">${me ? `Favorites shown from <b>${esc(me.name)}</b> (user ${esc(me.id)})` : 'No favorites profile set.'}</p>
+      <a class="btn" href="#/favorites">${me ? 'Open favorites' : 'Set up favorites'}</a>
       <button id="clearProgress">Clear reading history</button>
     </div>`;
   $('#fit').value = rp.fit; $('#bg').value = rp.bg;
@@ -463,6 +502,19 @@ async function renderSettings() {
     store.set('ldl_storage', { type: 'app', index: v.index, label: `${v.label} (app folder)` });
   }));
   if (target?.type === 'tree') store.set('ldl_storage_tree', target);
+  $('#signInBtn2')?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try {
+      const r = await signIn();
+      if (!r.signedIn) alert("You don't seem to be logged in. Log in on the site, then tap Done.");
+    } catch (err) { alert(err.message); }
+    renderSettings();
+  });
+  $('#signOutBtn')?.addEventListener('click', async () => {
+    if (!confirm('Sign out of luscious.net in this app?')) return;
+    await signOut();
+    renderSettings();
+  });
   $('#clearProgress').onclick = (e) => { store.set('ldl_progress', {}); e.target.textContent = 'Cleared'; };
 }
 

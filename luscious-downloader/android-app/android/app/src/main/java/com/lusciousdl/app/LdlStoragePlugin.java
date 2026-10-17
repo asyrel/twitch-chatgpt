@@ -603,7 +603,37 @@ public class LdlStoragePlugin extends Plugin {
     public void openVerify(PluginCall call) {
         Intent i = new Intent(getContext(), VerifyActivity.class);
         i.putExtra("url", call.getString("url", "https://www.luscious.net/"));
+        String hint = call.getString("hint");
+        if (hint != null) i.putExtra("hint", hint);
         startActivityForResult(call, i, "verifyResult");
+    }
+
+    /** Names of the cookies stored for a site (values are not exposed). */
+    @PluginMethod
+    public void getCookieNames(PluginCall call) {
+        String url = call.getString("url", "https://www.luscious.net/");
+        String raw = android.webkit.CookieManager.getInstance().getCookie(url);
+        JSArray names = new JSArray();
+        if (raw != null) for (String part : raw.split(";")) {
+            int eq = part.indexOf('=');
+            if (eq > 0) names.put(part.substring(0, eq).trim());
+        }
+        JSObject ret = new JSObject();
+        ret.put("names", names);
+        call.resolve(ret);
+    }
+
+    /** Signs out by clearing all cookies. */
+    @PluginMethod
+    public void clearCookies(PluginCall call) {
+        android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+        main.post(() -> {
+            android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
+            cm.removeAllCookies(v -> {
+                cm.flush();
+                call.resolve();
+            });
+        });
     }
 
     @ActivityCallback

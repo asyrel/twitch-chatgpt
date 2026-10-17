@@ -246,6 +246,49 @@ export async function getProfile(userId) {
   };
 }
 
+// ---------- signed-in user ----------
+// luscious.net doesn't document a "current user" query, so look for one in the API schema.
+const TYPE_Q = `query LdlType($name: String!) { __type(name: $name) { name kind fields { name args { name type { kind } } type { kind name ofType { kind name ofType { kind name } } } } } }`;
+const named = (t) => (t?.ofType ? named(t.ofType) : t);
+async function typeInfo(name) {
+  const d = await gql('LdlType', TYPE_Q, { name });
+  return d?.__type || null;
+}
+const ME_NAMES = /^(me|viewer|current_user|currentuser|current|whoami|who_am_i|get_current|self|logged_in_user|get_me)$/i;
+export async function currentUser() {
+  const root = (await gql('LdlRoots', 'query LdlRoots { __schema { queryType { name } } }', {}))?.__schema?.queryType?.name;
+  if (!root) return null;
+  const rootType = await typeInfo(root);
+  const candidates = [];
+  for (const f of rootType?.fields || []) {
+    const t = named(f.type);
+    if (ME_NAMES.test(f.name) && t?.kind === 'OBJECT') candidates.push({ path: [f.name], type: t.name });
+    else if (t?.kind === 'OBJECT' && !f.args.length && /user|account|profile|viewer/i.test(f.name)) {
+      const ns = await typeInfo(t.name);
+      for (const g of ns?.fields || []) {
+        const gt = named(g.type);
+        if (ME_NAMES.test(g.name) && gt?.kind === 'OBJECT' && !g.args.some((a) => a.type?.kind === 'NON_NULL')) candidates.push({ path: [f.name, g.name], type: gt.name });
+      }
+    }
+  }
+  for (const c of candidates) {
+    const t = await typeInfo(c.type);
+    const has = new Set((t?.fields || []).map((f) => f.name));
+    const sel = ['id', 'name', 'display_name', 'username'].filter((x) => has.has(x));
+    const userField = !has.has('id') && has.has('user') ? 'user { id name display_name }' : '';
+    if (!sel.length && !userField) continue;
+    let body = `${c.path.at(-1)} { ${sel.join(' ')} ${userField} }`;
+    for (let i = c.path.length - 2; i >= 0; i--) body = `${c.path[i]} { ${body} }`;
+    try {
+      const d = await gql('LdlMe', `query LdlMe { ${body} }`, {});
+      let u = c.path.reduce((o, k) => o?.[k], d);
+      if (u?.user) u = u.user;
+      if (u?.id) return { id: String(u.id), name: u.display_name || u.name || u.username || `User ${u.id}` };
+    } catch {}
+  }
+  return null;
+}
+
 export async function getAlbum(id) {
   const data = await gql('AlbumGet', ALBUM_QUERY, { id: String(id) });
   const a = data?.album?.get;

@@ -36,7 +36,8 @@ public class VerifyActivity extends Activity {
         bar.setPadding(pad, pad, pad, pad);
 
         TextView hint = new TextView(this);
-        hint.setText("Wait for luscious.net to load, then tap Done");
+        String hintText = getIntent().getStringExtra("hint");
+        hint.setText(hintText != null ? hintText : "Wait for luscious.net to load, then tap Done");
         hint.setTextColor(Color.parseColor("#E9E9EC"));
         hint.setTextSize(14);
         bar.addView(hint, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
