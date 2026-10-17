@@ -1,4 +1,4 @@
-name: Build Luscious DL APK
+name: Build Miwaku APK
 
 on:
   push:
@@ -44,22 +44,22 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace
-          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/LusciousDL.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/Miwaku.apk"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: LusciousDL-apk
-          path: LusciousDL.apk
+          name: Miwaku-apk
+          path: Miwaku.apk
 
       # Publishes the APK at a fixed link you can open on your phone:
-      # https://github.com/<owner>/<repo>/releases/download/luscious-dl-latest/LusciousDL.apk
-      - name: Publish to the "luscious-dl-latest" release
+      # https://github.com/<owner>/<repo>/releases/download/miwaku-latest/Miwaku.apk
+      - name: Publish to the "miwaku-latest" release
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete luscious-dl-latest --yes --cleanup-tag || true
-          gh release create luscious-dl-latest LusciousDL.apk \
+          gh release delete miwaku-latest --yes --cleanup-tag || true
+          gh release create miwaku-latest Miwaku.apk \
             --target "$GITHUB_SHA" \
-            --title "Luscious DL for Android (build ${{ github.run_number }})" \
-            --notes "Latest Android build of Luscious DL from \`${GITHUB_REF_NAME}\`. Download LusciousDL.apk on your phone and open it to install."
+            --title "Miwaku for Android (build ${{ github.run_number }})" \
+            --notes "Latest Android build of Miwaku from \`${GITHUB_REF_NAME}\`. Download Miwaku.apk on your phone and open it to install."

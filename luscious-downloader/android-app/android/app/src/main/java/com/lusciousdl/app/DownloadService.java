@@ -69,7 +69,7 @@ public class DownloadService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Notification n = build(this, "Luscious DL", 0, 0);
+        Notification n = build(this, "Miwaku", 0, 0);
         if (Build.VERSION.SDK_INT >= 29) startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         else startForeground(ID, n);
         running = true;

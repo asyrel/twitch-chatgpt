@@ -57,7 +57,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Native storage + device helpers for Luscious DL:
+ * Native storage + device helpers for Miwaku:
  * - save albums to the phone or SD card (app folder) or to a folder the user picks
  * - keep downloads out of the Gallery (.nomedia)
  * - full-screen reading mode, volume-key page turns, screen insets

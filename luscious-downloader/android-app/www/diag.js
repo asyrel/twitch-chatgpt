@@ -35,7 +35,7 @@ export async function renderCheck(ctx) {
         <button id="redetect" class="linkish">Forget detected luscious settings and check again</button>
         <p class="muted small">Copy the report and paste it to whoever is helping you fix the app.</p>`}`;
     $('#copyReport')?.addEventListener('click', () => {
-      const text = `Luscious DL connection check (${new Date().toISOString()})\n` + rows.map((r) => `${r.state.toUpperCase()} ${r.name}: ${r.detail}`).join('\n');
+      const text = `Miwaku connection check (${new Date().toISOString()})\n` + rows.map((r) => `${r.state.toUpperCase()} ${r.name}: ${r.detail}`).join('\n');
       navigator.clipboard?.writeText(text).then(() => toast('Report copied'), () => toast('Couldn’t copy'));
     });
     $('#again')?.addEventListener('click', () => renderCheck(ctx));

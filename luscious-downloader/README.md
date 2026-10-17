@@ -4,11 +4,11 @@ A small app to browse and download albums from luscious.net. It has a web page a
 
 **18+ only.** Use it for your own personal archiving, and respect the site's terms and the creators' rights.
 
-## Android app (APK)
+## Miwaku – Android app (APK)
 
 Install on your phone from this link (open it on the phone):
 
-**https://github.com/asyrel/twitch-chatgpt/releases/download/luscious-dl-latest/LusciousDL.apk**
+**https://github.com/asyrel/twitch-chatgpt/releases/download/miwaku-latest/Miwaku.apk**
 
 Android will ask you to allow installing apps from your browser the first time. The app runs entirely on the phone, so no computer or server is needed. It can:
 
