@@ -102,3 +102,5 @@ body.reading { overflow:hidden; }
 /* Galaxy A25 (1080x2340, ~411px wide): 3-column grid, cheap scrolling for long lists */
 .grid > .card, .grid > .thumb { content-visibility:auto; contain-intrinsic-size:auto 190px; }
 input[type=radio] { width:20px; height:20px; flex:none; accent-color:var(--accent); }
+pre.log { white-space:pre-wrap; word-break:break-word; font-size:12px; color:var(--muted); background:#14161a; padding:8px; border-radius:6px; }
+details summary { color:var(--muted); font-size:13px; margin-top:10px; }

@@ -7,29 +7,77 @@ export const isNative = !!Cap?.isNativePlatform?.();
 const plugin = (name) => Cap?.Plugins?.[name] || Cap?.registerPlugin?.(name);
 const Http = isNative ? plugin('CapacitorHttp') : null;
 
-const API = (() => {
-  try { return localStorage.getItem('ldl_api') || 'https://members.luscious.net/graphql/nobatch/'; }
-  catch { return 'https://members.luscious.net/graphql/nobatch/'; }
-})();
+// luscious.net has served its API from a few hosts over time; try each and remember the one that works.
+const ENDPOINTS = [
+  'https://www.luscious.net/graphql/nobatch/',
+  'https://members.luscious.net/graphql/nobatch/',
+  'https://api.luscious.net/graphql/nobatch/',
+];
+const ls = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+function endpointOrder() {
+  const forced = ls.get('ldl_api');
+  if (forced) return [forced];
+  const good = ls.get('ldl_api_ok');
+  return good && ENDPOINTS.includes(good) ? [good, ...ENDPOINTS.filter((e) => e !== good)] : ENDPOINTS;
+}
 const SITE = 'https://www.luscious.net';
-const UA = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36';
+// Use the phone's real browser identity, so luscious.net (and its bot check) sees a normal visitor.
+export const UA = navigator.userAgent;
 
-async function postJson(url, body) {
+export class ApiError extends Error {
+  constructor(message, { blocked = false, challenge = false, details = [] } = {}) {
+    super(message);
+    this.blocked = blocked;
+    this.challenge = challenge;
+    this.details = details;
+  }
+}
+
+async function postOnce(url, body) {
+  const origin = new URL(url).origin;
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json, text/plain, */*',
+    'User-Agent': UA,
+    Origin: origin,
+    Referer: origin + '/',
+  };
   if (Http) {
-    const r = await Http.request({
-      url, method: 'POST', data: body,
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': UA },
-      responseType: 'json',
-    });
-    let data = r.data;
-    if (typeof data === 'string') { try { data = JSON.parse(data); } catch { throw new Error(`Luscious returned HTTP ${r.status}`); } }
-    if (r.status >= 400 && !data?.errors) throw new Error(`Luscious returned HTTP ${r.status}`);
-    return data;
+    const r = await Http.request({ url, method: 'POST', data: body, headers, responseType: 'text' });
+    const h = Object.fromEntries(Object.entries(r.headers || {}).map(([k, v]) => [k.toLowerCase(), String(v)]));
+    return { status: r.status, text: typeof r.data === 'string' ? r.data : JSON.stringify(r.data), headers: h };
   }
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  const data = await r.json().catch(() => null);
-  if (!data) throw new Error(`Luscious returned HTTP ${r.status}`);
-  return data;
+  return { status: r.status, text: await r.text(), headers: { server: r.headers.get('server') || '', 'cf-mitigated': r.headers.get('cf-mitigated') || '' } };
+}
+
+async function postJson(path, body) {
+  const details = [];
+  let challenge = false;
+  for (const base of endpointOrder()) {
+    const url = base + path;
+    let res;
+    try {
+      res = await postOnce(url, body);
+    } catch (e) {
+      details.push(`${new URL(base).host}: ${e.message || e}`);
+      continue;
+    }
+    let json = null;
+    try { json = JSON.parse(res.text); } catch {}
+    if (json && (res.status < 400 || json.errors)) {
+      ls.set('ldl_api_ok', base);
+      return json;
+    }
+    const isCf = res.headers['cf-mitigated'] === 'challenge' || /just a moment|cf-chl|challenge-platform|attention required/i.test(res.text || '');
+    challenge ||= isCf;
+    const snippet = (res.text || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
+    details.push(`${new URL(base).host}: HTTP ${res.status}${res.headers.server ? ` (${res.headers.server})` : ''}${isCf ? ' – bot check' : ''}${snippet ? ` – ${snippet}` : ''}`);
+  }
+  throw new ApiError(
+    challenge ? 'luscious.net wants to check you\'re not a bot.' : 'luscious.net refused the request.',
+    { blocked: true, challenge, details },
+  );
 }
 
 // Fields the live API rejected; they're dropped from later queries.
@@ -45,7 +93,7 @@ function stripFields(query) {
 
 async function gql(operationName, query, variables) {
   for (let attempt = 0; attempt < 6; attempt++) {
-    const json = await postJson(`${API}?operationName=${operationName}`, { id: 1, operationName, query: stripFields(query), variables });
+    const json = await postJson(`?operationName=${operationName}`, { id: 1, operationName, query: stripFields(query), variables });
     if (!json.errors?.length) return json.data;
     const bad = json.errors.map((e) => e.message?.match(/Cannot query field ["'](\w+)["']/)?.[1]).filter(Boolean);
     if (!bad.length || bad.every((f) => unknownFields.has(f))) throw new Error(json.errors.map((e) => e.message).join('; '));
@@ -205,6 +253,10 @@ export async function getAlbum(id) {
   return normAlbum(a);
 }
 
+function largestThumb(thumbs) {
+  const sorted = (thumbs || []).filter((t) => t.url).sort((a, b) => (b.width || 0) - (a.width || 0));
+  return sorted[0]?.url ?? null;
+}
 function pickThumb(thumbs) {
   const sorted = (thumbs || []).filter((t) => t.url).sort((a, b) => (a.width || 0) - (b.width || 0));
   return (sorted.find((t) => (t.width || 0) >= 300) || sorted[sorted.length - 1])?.url ?? null;
@@ -224,6 +276,8 @@ export async function getAllPictures(albumId, onProgress) {
         title: p.title || '',
         animated: !!p.is_animated,
         original: absUrl(p.url_to_video || p.url_to_original || p.download_url),
+        // luscious.net sometimes refuses full-size originals; its largest preview (~1680px) still works.
+        large: p.url_to_video ? null : absUrl(largestThumb(p.thumbnails)),
         thumb: absUrl(pickThumb(p.thumbnails) || p.url_to_original),
       });
     }
@@ -237,7 +291,7 @@ export async function getAllPictures(albumId, onProgress) {
 // Loads an image as a data: URL through native HTTP (used if the <img> tag can't load it directly).
 export async function imageDataUrl(url) {
   if (!Http) return url;
-  const r = await Http.request({ url, method: 'GET', responseType: 'blob', headers: { 'User-Agent': UA } });
+  const r = await Http.request({ url, method: 'GET', responseType: 'blob', headers: { 'User-Agent': UA, Referer: SITE + '/' } });
   if (r.status >= 400) throw new Error(`HTTP ${r.status}`);
   const type = r.headers?.['Content-Type'] || r.headers?.['content-type'] || 'image/jpeg';
   return `data:${type};base64,${r.data}`;
@@ -273,9 +327,9 @@ export async function saveAlbum(album, pictures, target, { onProgress, jobId, co
   if (!N.hasNative) throw new Error('Saving only works in the Android app.');
   if (!target) throw new Error('Choose a download location in Settings first.');
   const folder = albumFolder(album);
-  const files = pictures.map((p, i) => ({ url: p.original, name: fileNameFor(p, i, pictures.length) }));
+  const files = pictures.map((p, i) => ({ url: p.original, fallback: p.large || '', name: fileNameFor(p, i, pictures.length) }));
   const compress = COMPRESSION[compression]?.compress || null;
-  const r = await N.downloadAlbum({ target, folder, title: album.title, files, jobId, compress, onProgress });
+  const r = await N.downloadAlbum({ target, folder, title: album.title, files, jobId, compress, userAgent: UA, onProgress });
   return { folder, failed: r.failed, cancelled: r.cancelled, originalBytes: r.originalBytes || 0, savedBytes: r.savedBytes || 0 };
 }
 

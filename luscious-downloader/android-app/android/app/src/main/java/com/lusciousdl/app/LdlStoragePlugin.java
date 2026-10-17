@@ -304,14 +304,22 @@ public class LdlStoragePlugin extends Plugin {
         return n.endsWith(".png") || n.endsWith(".bmp");
     }
 
-    private static byte[] download(String url, AtomicBoolean cancel) throws IOException {
+    /** Thrown for 403/404 so we can switch to the fallback image right away. */
+    private static class RefusedException extends IOException {
+        RefusedException(String m) { super(m); }
+    }
+
+    private static byte[] download(String url, String ua, AtomicBoolean cancel) throws IOException {
         HttpURLConnection con = (HttpURLConnection) new URL(url).openConnection();
         try {
             con.setConnectTimeout(20000);
             con.setReadTimeout(60000);
             con.setInstanceFollowRedirects(true);
-            con.setRequestProperty("User-Agent", UA);
+            con.setRequestProperty("User-Agent", ua == null || ua.isEmpty() ? UA : ua);
+            con.setRequestProperty("Referer", "https://www.luscious.net/");
+            con.setRequestProperty("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
             int code = con.getResponseCode();
+            if (code == 403 || code == 404 || code == 410) throw new RefusedException("HTTP " + code);
             if (code >= 400) throw new IOException("HTTP " + code);
             int len = con.getContentLength();
             ByteArrayOutputStream out = new ByteArrayOutputStream(len > 0 ? len : 1 << 20);
@@ -392,13 +400,39 @@ public class LdlStoragePlugin extends Plugin {
         dir.rename(part, name);
     }
 
-    /** Downloads one file (with retries), optionally compressing it. Returns { originalBytes, savedBytes }. */
-    private static long[] fetchTo(Dir dir, String url, String name, Compress c, AtomicBoolean cancel) throws IOException {
+    /** Per-download settings shared by all files of an album. */
+    private static class Job {
+        final String ua;
+        final AtomicBoolean cancel;
+        // After a few refused originals, go straight to the fallback image.
+        final AtomicInteger refusedOriginals = new AtomicInteger();
+        Job(String ua, AtomicBoolean cancel) { this.ua = ua; this.cancel = cancel; }
+    }
+
+    /** Downloads one file (with retries, falling back to the preview image if refused), optionally compressing it. Returns { originalBytes, savedBytes }. */
+    private static long[] fetchTo(Dir dir, String url, String fallback, String name, Compress c, Job job) throws IOException {
+        AtomicBoolean cancel = job.cancel;
+        boolean hasFallback = fallback != null && !fallback.isEmpty() && !fallback.equals(url);
+        boolean useFallback = hasFallback && job.refusedOriginals.get() >= 3;
         IOException last = null;
         for (int attempt = 0; attempt < 4; attempt++) {
             if (cancel.get()) return new long[] { 0, 0 };
             try {
-                byte[] data = download(url, cancel);
+                byte[] data;
+                try {
+                    data = download(useFallback ? fallback : url, job.ua, cancel);
+                } catch (RefusedException refused) {
+                    if (useFallback || !hasFallback) throw refused;
+                    job.refusedOriginals.incrementAndGet();
+                    useFallback = true;
+                    data = download(fallback, job.ua, cancel);
+                }
+                // The fallback is a JPEG/WebP preview; keep the page's extension consistent with what was saved.
+                if (useFallback) {
+                    String fext = fallback.toLowerCase(Locale.ROOT).replaceAll("[?#].*$", "");
+                    int dot = fext.lastIndexOf('.');
+                    if (dot > fext.lastIndexOf('/')) name = stem(name) + fext.substring(dot);
+                }
                 byte[] out = data;
                 String outName = name;
                 if (c != null && compressible(name, c)) {
@@ -412,6 +446,7 @@ public class LdlStoragePlugin extends Plugin {
                 writeAtomically(dir, outName, out);
                 return new long[] { data.length, out.length };
             } catch (IOException e) {
+                if (e instanceof RefusedException) throw e; // retrying won't help
                 last = e;
                 if (cancel.get()) return new long[] { 0, 0 };
                 try { Thread.sleep(700L << attempt); } catch (InterruptedException ie) { return new long[] { 0, 0 }; }
@@ -455,6 +490,7 @@ public class LdlStoragePlugin extends Plugin {
         }
         final AtomicBoolean cancel = new AtomicBoolean(false);
         cancels.put(jobId, cancel);
+        final Job job = new Job(call.getString("userAgent", UA), cancel);
         jobs.execute(() -> {
             try {
                 Dir root = rootDir(target);
@@ -476,7 +512,7 @@ public class LdlStoragePlugin extends Plugin {
                         String name = f.optString("name");
                         try {
                             if (!cancel.get() && !existing.contains(stem(name))) {
-                                long[] sz = fetchTo(album, f.optString("url"), name, compress, cancel);
+                                long[] sz = fetchTo(album, f.optString("url"), f.optString("fallback", ""), name, compress, job);
                                 origBytes.addAndGet(sz[0]);
                                 savedBytes.addAndGet(sz[1]);
                             }
@@ -560,6 +596,19 @@ public class LdlStoragePlugin extends Plugin {
                 call.reject(e.getMessage() == null ? e.toString() : e.getMessage());
             }
         });
+    }
+
+    /** Opens luscious.net in a browser screen so the user can pass its bot check. */
+    @PluginMethod
+    public void openVerify(PluginCall call) {
+        Intent i = new Intent(getContext(), VerifyActivity.class);
+        i.putExtra("url", call.getString("url", "https://www.luscious.net/"));
+        startActivityForResult(call, i, "verifyResult");
+    }
+
+    @ActivityCallback
+    private void verifyResult(PluginCall call, ActivityResult result) {
+        if (call != null) call.resolve();
     }
 
     // ---------------------------------------------------------------- reading mode & screen

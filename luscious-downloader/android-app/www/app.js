@@ -10,7 +10,20 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
 const loading = () => (app.innerHTML = '<div class="center"><div class="spinner"></div></div>');
-const showError = (e) => (app.innerHTML = `<div class="err">${esc(e.message || e)}</div>`);
+function showError(e) {
+  const details = e?.details?.length ? `<details><summary>Details</summary><pre class="log">${esc(e.details.join('\n'))}</pre></details>` : '';
+  const verify = e?.blocked && N.hasNative
+    ? `<p class="small">This usually means luscious.net is showing a bot check. Open it once in the app, wait until the site loads (tick the box if asked), then tap <b>Done</b>.</p>
+       <button class="primary" id="verifyBtn">Verify on luscious.net</button> `
+    : '';
+  app.innerHTML = `<div class="err">${esc(e?.message || e)}</div>
+    <div class="row">${verify}<button id="retryBtn">Retry</button></div>${details}`;
+  $('#retryBtn').onclick = () => route();
+  $('#verifyBtn')?.addEventListener('click', async () => {
+    try { await N.openVerify('https://www.luscious.net/'); } catch {}
+    route();
+  });
+}
 
 // ---------- preferences & content filters ----------
 const HIDE_RULES = {
@@ -265,7 +278,9 @@ async function renderAlbum(ref) {
 async function startReading(album, pictures, start) {
   const saved = savedEntry(album.id);
   const local = saved ? await L.localUrls(saved.target, saved.folder, pictures) : null;
-  const pages = pictures.map((p, i) => (local?.[i] ? { src: local[i], fallback: p.original } : { src: p.original }));
+  const pages = pictures.map((p, i) => (local?.[i]
+    ? { src: local[i], fallback: p.original, fallback2: p.large }
+    : { src: p.original, fallback: p.large }));
   const p = prefs();
   const prog = progressOf(album.id);
   const mode = prog?.mode || (album.isManga ? p.mangaMode : 'ltr');

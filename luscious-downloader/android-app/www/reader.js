@@ -163,7 +163,7 @@ function makeLoader(pages) {
       const img = new Image();
       img.decoding = 'async';
       img.referrerPolicy = 'no-referrer';
-      const urls = [pages[i].src, pages[i].fallback].filter(Boolean);
+      const urls = [pages[i].src, pages[i].fallback, pages[i].fallback2].filter(Boolean);
       let k = 0;
       img.onload = () => resolve(img);
       img.onerror = () => (++k < urls.length ? (img.src = urls[k]) : (cache.delete(i), reject(new Error('load failed'))));
@@ -394,8 +394,10 @@ function webtoonEngine({ stage, pages, start, prefs, onChange, onTap }) {
     if (!im || im.dataset.state) return;
     im.dataset.state = 'loading';
     im.onload = () => { im.dataset.state = 'done'; cells[i].classList.add('ok'); };
+    const urls = [pages[i].src, pages[i].fallback, pages[i].fallback2].filter(Boolean);
+    let k = 0;
     im.onerror = () => {
-      if (pages[i].fallback && im.src !== pages[i].fallback) return (im.src = pages[i].fallback);
+      if (++k < urls.length) return (im.src = urls[k]);
       im.dataset.state = 'error';
       cells[i].classList.add('err');
       cells[i].onclick = (e) => { e.stopPropagation(); cells[i].classList.remove('err'); delete im.dataset.state; cells[i].onclick = null; load(i); };

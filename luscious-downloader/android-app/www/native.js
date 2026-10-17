@@ -12,15 +12,16 @@ export const listAlbum = (target, folder) => call('listAlbum', { target, folder 
 export const deleteAlbum = (target, folder) => call('deleteAlbum', { target, folder });
 export const cancelDownloads = () => call('cancel', { all: true });
 export const setBackgroundMode = (active) => call('setBackgroundMode', { active }).catch(() => {});
+export const openVerify = (url) => call('openVerify', { url });
 export const setReading = (on, opts = {}) => call('setReading', { on, ...opts }).catch(() => {});
 
-export async function downloadAlbum({ target, folder, title, files, jobId, compress = null, concurrency = 4, onProgress }) {
+export async function downloadAlbum({ target, folder, title, files, jobId, compress = null, userAgent, concurrency = 4, onProgress }) {
   let handle = null;
   if (P && onProgress) {
     handle = await P.addListener('downloadProgress', (p) => { if (p.jobId === jobId) onProgress(p); });
   }
   try {
-    return await call('downloadAlbum', { target, folder, title, files, jobId, compress, concurrency });
+    return await call('downloadAlbum', { target, folder, title, files, jobId, compress, userAgent, concurrency });
   } finally {
     handle?.remove?.();
   }
