@@ -5,6 +5,7 @@ import * as B from './boorus.js';
 import * as T from './taste.js';
 import { $, app, esc, store, sheet, toast } from './util.js';
 import { postHidden } from './art.js';
+import { showSimilar } from './similar.js';
 import { addToNamedBoard, removeFromNamedBoard, isInBoard, LIKED_BOARD, pickBoard, addToBoard } from './boards.js';
 
 export const feedPrefs = () => ({ luscious: true, ...store.get('ldl_feed', {}) });
@@ -90,6 +91,7 @@ function cardHtml(c, i) {
       <button class="f-like" aria-label="Like">♥<span>${liked ? 'Liked' : 'Like'}</span></button>
       <button class="f-dis" aria-label="Show less">👎<span>Less</span></button>
       <button class="f-board" aria-label="Save to board">＋<span>Board</span></button>
+      <button class="f-sim" aria-label="More like this">≈<span>Similar</span></button>
       <button class="f-open" aria-label="Study">⤢<span>Study</span></button>
       <button class="f-info" aria-label="Details">⋯<span>More</span></button>
     </div>
@@ -186,9 +188,11 @@ function bindCards(scroller, ctx) {
     card.querySelector('.f-like').onclick = like;
     card.querySelector('.f-dis').onclick = dislike;
     card.querySelector('.f-board').onclick = async () => { const n = await addToBoard(c.album, c.picture, c.index || 0, ctx); if (n) toast(`Saved to ${n}`); };
+    card.querySelector('.f-sim').onclick = () => showSimilar(c);
     card.querySelector('.f-open').onclick = () => ctx.openReader({
       title: c.label, pages: [{ src: c.src, fallback: c.fallback }], start: 0, mode: 'ltr',
       onAddToBoard: () => addToBoard(c.album, c.picture, c.index || 0, ctx),
+      onSimilar: () => showSimilar(c),
     });
     card.querySelector('.f-info').onclick = () => infoSheet(c);
     // Double-tap the image to like.
@@ -205,9 +209,11 @@ function infoSheet(c) {
   sheet(`<h3>${esc(c.label)}${c.artists?.length ? ` · ${esc(c.artists.join(', ').replace(/_/g, ' '))}` : ''}</h3>
     ${c.albumId ? `<a class="opt btn" href="#/album/${c.albumId}">Open the album</a>` : ''}
     ${c.pageUrl ? `<a class="opt btn" href="${esc(c.pageUrl)}" target="_blank" rel="noopener">Open post on ${esc(c.label)}</a>` : ''}
+    <button class="opt" data-sim="1">≈ More like this</button>
     <p class="muted small">Tap a tag to tune your feed:</p>
     <div class="chips wrap">${f.map((t) => `<button data-t="${esc(t)}">${esc(t.replace(/_/g, ' '))}</button>`).join('')}</div>`, (el, close) => {
     el.querySelectorAll('[data-t]').forEach((b) => (b.onclick = () => { close(); tagSheet(b.dataset.t); }));
+    el.querySelector('[data-sim]').onclick = () => { close(); showSimilar(c); };
   });
 }
 

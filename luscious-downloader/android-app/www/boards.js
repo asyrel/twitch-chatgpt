@@ -3,6 +3,7 @@
 import * as L from './api.js';
 import * as N from './native.js';
 import { $, app, esc, store, imgTag, uid, sheet, toast } from './util.js';
+import { showSimilar } from './similar.js';
 
 const KEY = 'ldl_boards';
 const BOARD_FOLDER = '_Reference boards';
@@ -181,6 +182,10 @@ async function openBoardReader(board, items, start, ctx) {
   const pages = await pagesFor(items);
   ctx.openReader({
     title: board.name, pages, start, mode: 'ltr',
+    onSimilar: (i) => {
+      const it = items[i];
+      showSimilar({ key: it.pictureId, thumb: it.thumb, tags: it.tags || [], artists: it.author ? [it.author] : [] });
+    },
     onAddToBoard: async (i) => {
       const it = items[i];
       const nb = await pickBoard('Also save to board');

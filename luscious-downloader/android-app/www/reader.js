@@ -25,7 +25,7 @@ let active = null;
  * pages: [{ src, fallback? }]  start: page index  mode: 'rtl'|'ltr'|'webtoon'
  * onPage(index), onMode(mode), onClose(index)
  */
-export function openReader({ title = '', pages, start = 0, mode = 'ltr', onPage, onMode, onClose, onAddToBoard }) {
+export function openReader({ title = '', pages, start = 0, mode = 'ltr', onPage, onMode, onClose, onAddToBoard, onSimilar }) {
   ensureValuesFilter();
   if (active) active.close(true);
   const prefs = readerPrefs();
@@ -49,6 +49,7 @@ export function openReader({ title = '', pages, start = 0, mode = 'ltr', onPage,
           <button data-tool="palette" title="Color palette">🎨<span>Palette</span></button>
           <button data-tool="picker" title="Pick a color">💧<span>Picker</span></button>
           ${onAddToBoard ? '<button data-tool="board" title="Save to a board">＋<span>Board</span></button>' : ''}
+          ${onSimilar ? '<button data-tool="similar" title="More like this">≈<span>Similar</span></button>' : ''}
         </div>
         <div class="r-seek"><span class="r-num"></span><input type="range" min="1" step="1"><span class="r-total"></span></div>
         <div class="r-opts">
@@ -151,6 +152,7 @@ export function openReader({ title = '', pages, start = 0, mode = 'ltr', onPage,
     const k = b.dataset.tool;
     if (k === 'grid') study.grid = GRIDS[(GRIDS.indexOf(study.grid) + 1) % GRIDS.length];
     else if (k === 'palette') return showPalette();
+    else if (k === 'similar') return onSimilar(index);
     else if (k === 'board') {
       const r = await onAddToBoard(index);
       if (r) toast(`Saved to ${r}`);

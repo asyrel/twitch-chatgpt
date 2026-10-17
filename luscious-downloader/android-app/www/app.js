@@ -10,6 +10,8 @@ import { renderArt } from './art.js';
 import * as B from './boorus.js';
 import { renderFeed, renderTaste } from './feed.js';
 import { loadBoards, LIKED_BOARD } from './boards.js';
+import { renderSimilar, showSimilar } from './similar.js';
+import { renderCheck } from './diag.js';
 
 function showError(e) {
   const details = e?.details?.length ? `<details><summary>Details</summary><pre class="log">${esc(e.details.join('\n'))}</pre></details>` : '';
@@ -389,6 +391,7 @@ async function startReading(album, pictures, start) {
   openReader({
     title: album.title, pages, start, mode,
     onAddToBoard: (i) => addToBoard(album, pictures[i], i, ctx),
+    onSimilar: (i) => showSimilar({ key: pictures[i].id, thumb: pictures[i].thumb, tags: [...album.tags, ...album.genres], artists: album.artists }),
     onPage: (i) => saveProgress(album, i, pictures.length),
     onMode: (m) => saveProgress(album, progressOf(album.id)?.page || 0, pictures.length, { mode: m }),
     onClose: () => { if (location.hash.startsWith('#/album/')) renderAlbum(album.id); },
@@ -492,6 +495,7 @@ async function renderSettings() {
   const target = await getTarget();
   const vols = await N.getVolumes().catch(() => []);
   app.innerHTML = `<h2>Settings</h2>
+    <a class="btn primary checkbtn" href="#/check">🩺 Connection check</a>
     <div class="box">
       <h3>Save downloads to</h3>
       ${N.hasNative ? `
@@ -635,6 +639,8 @@ function route() {
   document.body.classList.toggle('feedmode', kind === '' || kind === 'feed');
   if (kind === '' || kind === 'feed') return renderFeed(ctx);
   if (kind === 'taste') return renderTaste(ctx);
+  if (kind === 'similar') return renderSimilar(ctx);
+  if (kind === 'check') return renderCheck(ctx);
   if (kind === 'browse') { location.replace(`#/${store.get('ldl_last_section', 'hentai')}`); return; }
   if (SECTIONS[kind]) store.set('ldl_last_section', kind);
   if (kind === 'board-liked') {

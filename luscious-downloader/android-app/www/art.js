@@ -2,6 +2,7 @@
 import * as B from './boorus.js';
 import { $, app, esc, store, imgTag } from './util.js';
 import { addToBoard } from './boards.js';
+import { showSimilar } from './similar.js';
 
 // Hidden-category / blocked / real-photo check on a post's tags.
 export const postHidden = (x, ctx) => !!ctx.hiddenReason({ audiences: [], genres: [], tags: x.tags.map((t) => t.replace(/_/g, ' ')).concat(x.tags) });
@@ -11,6 +12,7 @@ export function openPosts(items, start, title, ctx) {
     title, start, mode: 'ltr',
     pages: items.map((x) => ({ src: x.sample || x.original, fallback: x.original, fallback2: x.thumb })),
     onAddToBoard: (i) => { const { album, picture } = B.asAlbumPicture(items[i]); return addToBoard(album, picture, 0, ctx); },
+    onSimilar: (i) => showSimilar(items[i]),
   });
 }
 

@@ -696,3 +696,11 @@ export async function localUrls(target, folder, pictures) {
     return null;
   }
 }
+
+// ---------- diagnostics helpers ----------
+export const apiInUse = () => ls.get('ldl_api_ok') || null;
+export const pictureSearchMode = () => { try { return JSON.parse(ls.get('ldl_picsearch') || 'null')?.s || 'not checked yet'; } catch { return 'unknown'; } };
+// Forget everything auto-detected about luscious.net so it's checked again.
+export function resetDetected() {
+  for (const k of ['ldl_api_ok', 'ldl_sorts', 'ldl_picsearch', 'ldl_categories']) { try { localStorage.removeItem(k); } catch {} }
+}
