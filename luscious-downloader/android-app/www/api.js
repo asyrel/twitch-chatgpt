@@ -260,14 +260,16 @@ export const albumFolder = (album) => `${safeName(album.title)} (${album.id})`;
 
 // Saves every picture of an album (skips files already saved). Runs natively so it keeps going in the background.
 // Compression presets. The Galaxy A25 screen is 1080px wide; extra width is kept for zooming in.
+// Pages are only ever scaled evenly, never cropped.
 export const COMPRESSION = {
-  off: { label: 'Off – keep originals', compress: null },
-  high: { label: 'High quality (WebP 90%, max 2160px wide)', compress: { quality: 90, maxWidth: 2160 } },
-  balanced: { label: 'Balanced (WebP 80%, max 1440px wide)', compress: { quality: 80, maxWidth: 1440 } },
+  lossless: { label: 'Lossless – identical quality, full size (recommended)', compress: { lossless: true } },
+  full: { label: 'Full size, visually identical (WebP 92%)', compress: { quality: 92, maxWidth: 0 } },
+  balanced: { label: 'Smaller (WebP 80%, max 1440px wide)', compress: { quality: 80, maxWidth: 1440 } },
   small: { label: 'Smallest (WebP 70%, max 1080px wide)', compress: { quality: 70, maxWidth: 1080 } },
+  off: { label: 'Off – keep files exactly as downloaded', compress: null },
 };
 
-export async function saveAlbum(album, pictures, target, { onProgress, jobId, compression = 'balanced' } = {}) {
+export async function saveAlbum(album, pictures, target, { onProgress, jobId, compression = 'lossless' } = {}) {
   if (!N.hasNative) throw new Error('Saving only works in the Android app.');
   if (!target) throw new Error('Choose a download location in Settings first.');
   const folder = albumFolder(album);

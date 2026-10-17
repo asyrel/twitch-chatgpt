@@ -18,7 +18,7 @@ const HIDE_RULES = {
   futa: { label: 'Futa', re: /futa|futanari|dickgirl/i },
   furry: { label: 'Furry', re: /furr(y|ies)|anthro|yiff/i },
 };
-const prefs = () => ({ show: { gay: false, futa: false, furry: false }, hideTags: [], mangaMode: 'rtl', compression: 'balanced', ...store.get('ldl_prefs', {}) });
+const prefs = () => ({ show: { gay: false, futa: false, furry: false }, hideTags: [], mangaMode: 'rtl', compression: 'lossless', ...store.get('ldl_prefs', {}) });
 const setPrefs = (p) => store.set('ldl_prefs', p);
 
 // Returns why an album is hidden ('Gay', 'tag: x', ...) or null if it should be shown.
@@ -387,7 +387,7 @@ async function renderSettings() {
       <b>Folder you choose:</b> kept even if you uninstall. Tip: on your SD card, create a folder like “Luscious” and pick it.</p>` : '<p class="muted small">Only available in the Android app.</p>'}
       <label style="margin-top:12px">Compress images while downloading</label>
       <select id="compression">${Object.entries(L.COMPRESSION).map(([k, v]) => `<option value="${k}" ${p.compression === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select>
-      <p class="muted small">Pages are shrunk to fit your screen and saved as WebP, usually 3–5× smaller with no visible difference. GIFs and videos are never changed.</p>
+      <p class="muted small"><b>Lossless</b> keeps every pixel and the full size: PNG pages are re-packed as lossless WebP (often 25–50% smaller); JPEGs are kept exactly as they are. The other options save more space by re-encoding. Pages are never cropped, and GIFs and videos are never changed.</p>
     </div>
     <div class="box">
       <h3>Show these (hidden by default)</h3>

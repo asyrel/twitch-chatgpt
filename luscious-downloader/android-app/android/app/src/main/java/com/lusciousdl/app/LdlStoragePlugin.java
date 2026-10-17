@@ -283,11 +283,12 @@ public class LdlStoragePlugin extends Plugin {
         return m == null ? "application/octet-stream" : m;
     }
 
-    /** How to shrink images while saving. maxWidth 0 = keep size. */
+    /** How to shrink images while saving. maxWidth 0 = keep size. lossless = pixel-identical output. */
     private static class Compress {
         final int quality;
         final int maxWidth;
-        Compress(int quality, int maxWidth) { this.quality = quality; this.maxWidth = maxWidth; }
+        final boolean lossless;
+        Compress(int quality, int maxWidth, boolean lossless) { this.quality = quality; this.maxWidth = maxWidth; this.lossless = lossless; }
     }
 
     private static String stem(String name) {
@@ -295,9 +296,12 @@ public class LdlStoragePlugin extends Plugin {
         return dot > 0 ? name.substring(0, dot) : name;
     }
 
-    private static boolean compressible(String name) {
+    private static boolean compressible(String name, Compress c) {
         String n = name.toLowerCase(Locale.ROOT);
-        return n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".png") || n.endsWith(".bmp");
+        boolean jpeg = n.endsWith(".jpg") || n.endsWith(".jpeg");
+        // A JPEG can't be re-saved smaller without losing quality, so lossless mode keeps it as-is.
+        if (jpeg) return !c.lossless;
+        return n.endsWith(".png") || n.endsWith(".bmp");
     }
 
     private static byte[] download(String url, AtomicBoolean cancel) throws IOException {
@@ -333,7 +337,8 @@ public class LdlStoragePlugin extends Plugin {
         BitmapFactory.decodeByteArray(data, 0, data.length, bounds);
         int w = bounds.outWidth, h = bounds.outHeight;
         if (w <= 0 || h <= 0) return null;
-        int targetW = (c.maxWidth > 0 && w > c.maxWidth) ? c.maxWidth : w;
+        // Only ever scales evenly (never crops); lossless mode keeps the original size.
+        int targetW = (!c.lossless && c.maxWidth > 0 && w > c.maxWidth) ? c.maxWidth : w;
         int targetH = (int) Math.max(1, Math.round((double) h * targetW / w));
 
         BitmapFactory.Options opts = new BitmapFactory.Options();
@@ -349,9 +354,19 @@ public class LdlStoragePlugin extends Plugin {
             boolean ok;
             // WebP can't go past 16383px; very tall webtoon strips use JPEG instead.
             if (targetH <= 16383 && targetW <= 16383) {
-                Bitmap.CompressFormat fmt = Build.VERSION.SDK_INT >= 30 ? Bitmap.CompressFormat.WEBP_LOSSY : Bitmap.CompressFormat.WEBP;
-                ok = scaled.compress(fmt, c.quality, out);
+                Bitmap.CompressFormat fmt;
+                int q = c.quality;
+                if (c.lossless) {
+                    // Older Android: WEBP at quality 100 is lossless.
+                    fmt = Build.VERSION.SDK_INT >= 30 ? Bitmap.CompressFormat.WEBP_LOSSLESS : Bitmap.CompressFormat.WEBP;
+                    q = 100;
+                } else {
+                    fmt = Build.VERSION.SDK_INT >= 30 ? Bitmap.CompressFormat.WEBP_LOSSY : Bitmap.CompressFormat.WEBP;
+                }
+                ok = scaled.compress(fmt, q, out);
                 extOut[0] = ".webp";
+            } else if (c.lossless) {
+                return null; // too tall for WebP; keep the original rather than lose quality
             } else {
                 ok = scaled.compress(Bitmap.CompressFormat.JPEG, Math.min(95, c.quality + 5), out);
                 extOut[0] = ".jpg";
@@ -386,7 +401,7 @@ public class LdlStoragePlugin extends Plugin {
                 byte[] data = download(url, cancel);
                 byte[] out = data;
                 String outName = name;
-                if (c != null && compressible(name)) {
+                if (c != null && compressible(name, c)) {
                     String[] ext = { ".webp" };
                     byte[] small = shrink(data, c, ext);
                     if (small != null) {
@@ -431,8 +446,8 @@ public class LdlStoragePlugin extends Plugin {
         final String jobId = call.getString("jobId", String.valueOf(System.nanoTime()));
         final int conc = Math.max(1, Math.min(8, call.getInt("concurrency", 4)));
         final JSObject comp = call.getObject("compress");
-        final Compress compress = (comp != null && comp.optInt("quality", 0) > 0)
-            ? new Compress(Math.max(30, Math.min(100, comp.optInt("quality", 80))), Math.max(0, comp.optInt("maxWidth", 0)))
+        final Compress compress = (comp != null && (comp.optInt("quality", 0) > 0 || comp.optBoolean("lossless", false)))
+            ? new Compress(Math.max(30, Math.min(100, comp.optInt("quality", 100))), Math.max(0, comp.optInt("maxWidth", 0)), comp.optBoolean("lossless", false))
             : null;
         if (folder == null || files == null) {
             call.reject("missing folder or files");
