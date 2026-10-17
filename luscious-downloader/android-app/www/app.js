@@ -18,7 +18,7 @@ const HIDE_RULES = {
   futa: { label: 'Futa', re: /futa|futanari|dickgirl/i },
   furry: { label: 'Furry', re: /furr(y|ies)|anthro|yiff/i },
 };
-const prefs = () => ({ show: { gay: false, futa: false, furry: false }, hideTags: [], mangaMode: 'rtl', ...store.get('ldl_prefs', {}) });
+const prefs = () => ({ show: { gay: false, futa: false, furry: false }, hideTags: [], mangaMode: 'rtl', compression: 'balanced', ...store.get('ldl_prefs', {}) });
 const setPrefs = (p) => store.set('ldl_prefs', p);
 
 // Returns why an album is hidden ('Gay', 'tag: x', ...) or null if it should be shown.
@@ -318,9 +318,15 @@ async function runQueue() {
     active.total = pictures.length;
     const r = await L.saveAlbum(album, pictures, target, {
       jobId: `${album.id}-${Date.now()}`,
+      compression: prefs().compression,
       onProgress: (p) => { Object.assign(active, { done: p.done, failed: p.failed, total: p.total }); showBar(); },
     });
-    entry = { id: album.id, title: album.title, target, folder: r.folder, count: pictures.length - r.failed, failed: r.failed, status: r.cancelled ? 'cancelled' : r.failed ? 'partial' : 'done' };
+    const prev = dlHistory().find((h) => h.id === album.id);
+    entry = {
+      id: album.id, title: album.title, target, folder: r.folder, count: pictures.length - r.failed, failed: r.failed,
+      status: r.cancelled ? 'cancelled' : r.failed ? 'partial' : 'done',
+      originalBytes: (prev?.originalBytes || 0) + r.originalBytes, savedBytes: (prev?.savedBytes || 0) + r.savedBytes,
+    };
   } catch (e) {
     entry = { id: album.id, title: album.title, status: 'error', error: e.message };
   }
@@ -339,16 +345,19 @@ function showBar() {
 }
 $('#dlcancel').onclick = () => { queue.length = 0; N.cancelDownloads(); };
 
+const sizeNote = (x) => x.savedBytes && x.originalBytes > x.savedBytes ? `<br><span class="small">${fmtBytes(x.originalBytes)} → ${fmtBytes(x.savedBytes)}</span>` : x.savedBytes ? `<br><span class="small">${fmtBytes(x.savedBytes)}</span>` : '';
 async function renderDownloads() {
   const h = dlHistory();
   const target = await getTarget();
   const label = { done: '✓ Saved', partial: '⚠ Some failed', cancelled: 'Cancelled', error: '✕ Failed' };
+  const totO = h.reduce((n, x) => n + (x.originalBytes || 0), 0), totS = h.reduce((n, x) => n + (x.savedBytes || 0), 0);
   app.innerHTML = `<h2>Downloads</h2>
+    ${totO > totS && totS ? `<p class="small">Compression saved <b>${fmtBytes(totO - totS)}</b> (${fmtBytes(totO)} → ${fmtBytes(totS)})</p>` : ''}
     ${active ? `<p>Downloading <b>${esc(active.album.title)}</b>…</p>` : ''}
     ${queue.length ? `<p class="muted">${queue.length} album(s) waiting</p>` : ''}
     <p class="muted small">Saving to <b>${esc(target?.label || 'not set')}</b> · <a href="#/settings">change</a><br>Downloads are hidden from your Gallery. Saved albums open offline in the reader. Tap Save again on an album to fill in any missing pictures.</p>
     <div class="list">${h.map((x) => `<div class="item"><a href="#/album/${x.id}">${esc(x.title)}</a>
-      <span class="muted nowrap" title="${esc(x.error || x.folder || '')}">${label[x.status] || ''}${x.status === 'done' ? ` (${x.count})` : x.failed ? ` (${x.failed})` : ''}${x.target ? ` <button class="linkish" data-del="${x.id}">delete</button>` : ''}</span></div>`).join('') || '<p class="muted">Nothing downloaded yet.</p>'}</div>
+      <span class="muted nowrap" title="${esc(x.error || x.folder || '')}">${label[x.status] || ''}${x.status === 'done' ? ` (${x.count})` : x.failed ? ` (${x.failed})` : ''}${x.target ? ` <button class="linkish" data-del="${x.id}">delete</button>` : ''}${sizeNote(x)}</span></div>`).join('') || '<p class="muted">Nothing downloaded yet.</p>'}</div>
     ${h.length ? '<div class="center"><button id="clearH">Clear list</button></div>' : ''}`;
   $('#clearH')?.addEventListener('click', () => { if (confirm('Clear the list? (Saved files stay on your phone.)')) { store.set('ldl_history', []); renderDownloads(); } });
   app.querySelectorAll('[data-del]').forEach((b) => (b.onclick = async () => {
@@ -376,6 +385,9 @@ async function renderSettings() {
       <p class="muted small">Downloads never appear in your Gallery.<br>
       <b>App folder:</b> no setup needed, but Android deletes it if you uninstall the app (updating is fine).<br>
       <b>Folder you choose:</b> kept even if you uninstall. Tip: on your SD card, create a folder like “Luscious” and pick it.</p>` : '<p class="muted small">Only available in the Android app.</p>'}
+      <label style="margin-top:12px">Compress images while downloading</label>
+      <select id="compression">${Object.entries(L.COMPRESSION).map(([k, v]) => `<option value="${k}" ${p.compression === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select>
+      <p class="muted small">Pages are shrunk to fit your screen and saved as WebP, usually 3–5× smaller with no visible difference. GIFs and videos are never changed.</p>
     </div>
     <div class="box">
       <h3>Show these (hidden by default)</h3>
@@ -416,6 +428,7 @@ async function renderSettings() {
   $('#invert').onchange = (e) => rset('invertTaps', e.target.checked);
   $('#awake').onchange = (e) => rset('keepAwake', e.target.checked);
   $('#pnum').onchange = (e) => rset('showPageNum', e.target.checked);
+  $('#compression').onchange = (e) => { const x = prefs(); x.compression = e.target.value; setPrefs(x); };
   $('#volkeys').onchange = (e) => rset('volumeKeys', e.target.checked);
   $('#fullscr').onchange = (e) => rset('fullscreen', e.target.checked);
   const pick = async () => {

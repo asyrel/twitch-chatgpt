@@ -6,6 +6,8 @@ import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -36,6 +38,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -280,37 +283,123 @@ public class LdlStoragePlugin extends Plugin {
         return m == null ? "application/octet-stream" : m;
     }
 
-    private static void fetchTo(Dir dir, String url, String name, AtomicBoolean cancel) throws IOException {
+    /** How to shrink images while saving. maxWidth 0 = keep size. */
+    private static class Compress {
+        final int quality;
+        final int maxWidth;
+        Compress(int quality, int maxWidth) { this.quality = quality; this.maxWidth = maxWidth; }
+    }
+
+    private static String stem(String name) {
+        int dot = name.lastIndexOf('.');
+        return dot > 0 ? name.substring(0, dot) : name;
+    }
+
+    private static boolean compressible(String name) {
+        String n = name.toLowerCase(Locale.ROOT);
+        return n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".png") || n.endsWith(".bmp");
+    }
+
+    private static byte[] download(String url, AtomicBoolean cancel) throws IOException {
+        HttpURLConnection con = (HttpURLConnection) new URL(url).openConnection();
+        try {
+            con.setConnectTimeout(20000);
+            con.setReadTimeout(60000);
+            con.setInstanceFollowRedirects(true);
+            con.setRequestProperty("User-Agent", UA);
+            int code = con.getResponseCode();
+            if (code >= 400) throw new IOException("HTTP " + code);
+            int len = con.getContentLength();
+            ByteArrayOutputStream out = new ByteArrayOutputStream(len > 0 ? len : 1 << 20);
+            try (InputStream in = con.getInputStream()) {
+                byte[] buf = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    if (cancel.get()) throw new IOException("cancelled");
+                    out.write(buf, 0, n);
+                }
+            }
+            return out.toByteArray();
+        } finally {
+            con.disconnect();
+        }
+    }
+
+    /** Re-encodes an image as WebP (JPEG for very tall strips), scaled down to maxWidth. Returns null to keep the original. */
+    @SuppressWarnings("deprecation")
+    private static byte[] shrink(byte[] data, Compress c, String[] extOut) {
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(data, 0, data.length, bounds);
+        int w = bounds.outWidth, h = bounds.outHeight;
+        if (w <= 0 || h <= 0) return null;
+        int targetW = (c.maxWidth > 0 && w > c.maxWidth) ? c.maxWidth : w;
+        int targetH = (int) Math.max(1, Math.round((double) h * targetW / w));
+
+        BitmapFactory.Options opts = new BitmapFactory.Options();
+        opts.inSampleSize = 1;
+        while (w / (opts.inSampleSize * 2) >= targetW) opts.inSampleSize *= 2; // cheap pre-shrink while decoding
+        opts.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        Bitmap bmp = null, scaled = null;
+        try {
+            bmp = BitmapFactory.decodeByteArray(data, 0, data.length, opts);
+            if (bmp == null) return null;
+            scaled = (bmp.getWidth() != targetW) ? Bitmap.createScaledBitmap(bmp, targetW, targetH, true) : bmp;
+            ByteArrayOutputStream out = new ByteArrayOutputStream(data.length / 3 + 1024);
+            boolean ok;
+            // WebP can't go past 16383px; very tall webtoon strips use JPEG instead.
+            if (targetH <= 16383 && targetW <= 16383) {
+                Bitmap.CompressFormat fmt = Build.VERSION.SDK_INT >= 30 ? Bitmap.CompressFormat.WEBP_LOSSY : Bitmap.CompressFormat.WEBP;
+                ok = scaled.compress(fmt, c.quality, out);
+                extOut[0] = ".webp";
+            } else {
+                ok = scaled.compress(Bitmap.CompressFormat.JPEG, Math.min(95, c.quality + 5), out);
+                extOut[0] = ".jpg";
+            }
+            if (!ok || out.size() == 0 || out.size() >= data.length) return null; // not worth it
+            return out.toByteArray();
+        } catch (OutOfMemoryError oom) {
+            return null;
+        } finally {
+            if (scaled != null && scaled != bmp) scaled.recycle();
+            if (bmp != null) bmp.recycle();
+        }
+    }
+
+    private static void writeAtomically(Dir dir, String name, byte[] data) throws IOException {
+        String part = name + ".part";
+        try (OutputStream out = dir.create(part)) {
+            out.write(data);
+        } catch (IOException e) {
+            dir.delete(part);
+            throw e;
+        }
+        dir.rename(part, name);
+    }
+
+    /** Downloads one file (with retries), optionally compressing it. Returns { originalBytes, savedBytes }. */
+    private static long[] fetchTo(Dir dir, String url, String name, Compress c, AtomicBoolean cancel) throws IOException {
         IOException last = null;
         for (int attempt = 0; attempt < 4; attempt++) {
-            if (cancel.get()) return;
-            HttpURLConnection con = null;
-            String part = name + ".part";
+            if (cancel.get()) return new long[] { 0, 0 };
             try {
-                con = (HttpURLConnection) new URL(url).openConnection();
-                con.setConnectTimeout(20000);
-                con.setReadTimeout(60000);
-                con.setInstanceFollowRedirects(true);
-                con.setRequestProperty("User-Agent", UA);
-                int code = con.getResponseCode();
-                if (code >= 400) throw new IOException("HTTP " + code);
-                try (InputStream in = con.getInputStream(); OutputStream out = dir.create(part)) {
-                    byte[] buf = new byte[64 * 1024];
-                    int n;
-                    while ((n = in.read(buf)) > 0) {
-                        if (cancel.get()) throw new IOException("cancelled");
-                        out.write(buf, 0, n);
+                byte[] data = download(url, cancel);
+                byte[] out = data;
+                String outName = name;
+                if (c != null && compressible(name)) {
+                    String[] ext = { ".webp" };
+                    byte[] small = shrink(data, c, ext);
+                    if (small != null) {
+                        out = small;
+                        outName = stem(name) + ext[0];
                     }
                 }
-                dir.rename(part, name);
-                return;
+                writeAtomically(dir, outName, out);
+                return new long[] { data.length, out.length };
             } catch (IOException e) {
                 last = e;
-                dir.delete(part);
-                if (cancel.get()) return;
-                try { Thread.sleep(700L << attempt); } catch (InterruptedException ie) { return; }
-            } finally {
-                if (con != null) con.disconnect();
+                if (cancel.get()) return new long[] { 0, 0 };
+                try { Thread.sleep(700L << attempt); } catch (InterruptedException ie) { return new long[] { 0, 0 }; }
             }
         }
         throw last;
@@ -341,6 +430,10 @@ public class LdlStoragePlugin extends Plugin {
         final JSArray files = call.getArray("files");
         final String jobId = call.getString("jobId", String.valueOf(System.nanoTime()));
         final int conc = Math.max(1, Math.min(8, call.getInt("concurrency", 4)));
+        final JSObject comp = call.getObject("compress");
+        final Compress compress = (comp != null && comp.optInt("quality", 0) > 0)
+            ? new Compress(Math.max(30, Math.min(100, comp.optInt("quality", 80))), Math.max(0, comp.optInt("maxWidth", 0)))
+            : null;
         if (folder == null || files == null) {
             call.reject("missing folder or files");
             return;
@@ -353,7 +446,11 @@ public class LdlStoragePlugin extends Plugin {
                 ensureNoMedia(root);
                 Dir album = root.sub(folder, true);
                 ensureNoMedia(album);
-                Map<String, String> existing = album.list();
+                // Skip pages already saved, whatever format they were saved in.
+                java.util.Set<String> existing = new java.util.HashSet<>();
+                for (String n : album.list().keySet()) if (!n.endsWith(".part")) existing.add(stem(n));
+                java.util.concurrent.atomic.AtomicLong origBytes = new java.util.concurrent.atomic.AtomicLong();
+                java.util.concurrent.atomic.AtomicLong savedBytes = new java.util.concurrent.atomic.AtomicLong();
                 int total = files.length();
                 AtomicInteger done = new AtomicInteger();
                 AtomicInteger failed = new AtomicInteger();
@@ -363,7 +460,11 @@ public class LdlStoragePlugin extends Plugin {
                     pool.execute(() -> {
                         String name = f.optString("name");
                         try {
-                            if (!cancel.get() && !existing.containsKey(name)) fetchTo(album, f.optString("url"), name, cancel);
+                            if (!cancel.get() && !existing.contains(stem(name))) {
+                                long[] sz = fetchTo(album, f.optString("url"), name, compress, cancel);
+                                origBytes.addAndGet(sz[0]);
+                                savedBytes.addAndGet(sz[1]);
+                            }
                         } catch (Exception e) {
                             failed.incrementAndGet();
                         }
@@ -383,6 +484,8 @@ public class LdlStoragePlugin extends Plugin {
                 ret.put("total", total);
                 ret.put("failed", failed.get());
                 ret.put("cancelled", cancel.get());
+                ret.put("originalBytes", origBytes.get());
+                ret.put("savedBytes", savedBytes.get());
                 call.resolve(ret);
             } catch (Exception e) {
                 call.reject(e.getMessage() == null ? e.toString() : e.getMessage());

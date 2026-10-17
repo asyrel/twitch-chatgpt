@@ -19,6 +19,7 @@ Android will ask you to allow installing apps from your browser the first time. 
 - save albums to the **SD card** or phone, never shown in the Gallery (Settings ⚙ → Save downloads to):
   - *app folder* on SD card or phone: no setup, but removed if the app is uninstalled (updates are fine)
   - *a folder you choose*: kept after uninstalling; a `.nomedia` file keeps it out of the Gallery
+- images are compressed while downloading (WebP, sized for the phone screen; usually 3–5× smaller; adjustable or off in Settings)
 - downloads run natively with a progress notification, so they keep going with the screen off
 - tuned for the Samsung Galaxy A25: volume keys turn pages, full-screen reading, screen stays on, layout fits the notch and navigation bar
 

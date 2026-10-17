@@ -259,13 +259,22 @@ export function fileNameFor(pic, index, total) {
 export const albumFolder = (album) => `${safeName(album.title)} (${album.id})`;
 
 // Saves every picture of an album (skips files already saved). Runs natively so it keeps going in the background.
-export async function saveAlbum(album, pictures, target, { onProgress, jobId } = {}) {
+// Compression presets. The Galaxy A25 screen is 1080px wide; extra width is kept for zooming in.
+export const COMPRESSION = {
+  off: { label: 'Off – keep originals', compress: null },
+  high: { label: 'High quality (WebP 90%, max 2160px wide)', compress: { quality: 90, maxWidth: 2160 } },
+  balanced: { label: 'Balanced (WebP 80%, max 1440px wide)', compress: { quality: 80, maxWidth: 1440 } },
+  small: { label: 'Smallest (WebP 70%, max 1080px wide)', compress: { quality: 70, maxWidth: 1080 } },
+};
+
+export async function saveAlbum(album, pictures, target, { onProgress, jobId, compression = 'balanced' } = {}) {
   if (!N.hasNative) throw new Error('Saving only works in the Android app.');
   if (!target) throw new Error('Choose a download location in Settings first.');
   const folder = albumFolder(album);
   const files = pictures.map((p, i) => ({ url: p.original, name: fileNameFor(p, i, pictures.length) }));
-  const r = await N.downloadAlbum({ target, folder, title: album.title, files, jobId, onProgress });
-  return { folder, failed: r.failed, cancelled: r.cancelled };
+  const compress = COMPRESSION[compression]?.compress || null;
+  const r = await N.downloadAlbum({ target, folder, title: album.title, files, jobId, compress, onProgress });
+  return { folder, failed: r.failed, cancelled: r.cancelled, originalBytes: r.originalBytes || 0, savedBytes: r.savedBytes || 0 };
 }
 
 // URLs of a saved album's files on the phone, for offline reading. null if not saved.
@@ -274,9 +283,11 @@ export async function localUrls(target, folder, pictures) {
   try {
     const r = await N.listAlbum(target, folder);
     if (!r?.exists) return null;
-    const byName = new Map(r.files.map((f) => [f.name, f.uri]));
+    // Match by name without extension: compressed pages are saved as .webp.
+    const stem = (n) => n.replace(/\.[a-z0-9]{2,5}$/i, '');
+    const byName = new Map(r.files.map((f) => [stem(f.name), f.uri]));
     return pictures.map((p, i) => {
-      const uri = byName.get(fileNameFor(p, i, pictures.length));
+      const uri = byName.get(stem(fileNameFor(p, i, pictures.length)));
       return uri ? N.fileSrc(uri) : null;
     });
   } catch {
