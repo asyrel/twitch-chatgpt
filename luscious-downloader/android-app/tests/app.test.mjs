@@ -64,7 +64,7 @@ test('Art tab filters every planted bad post and respects the Danbooru 2-tag lim
   await p.waitForSelector('.grid.art .thumb', { timeout: 20000 });
   const count = await p.locator('.grid.art .thumb').count();
   assert.ok(count > 0);
-  assert.equal(count % 3, 0, 'exactly 3 allowed posts per site page');
+  assert.equal(count % 3, 0, 'exactly 3 allowed posts per site page (bad ones filtered)');
   const dan = env.booruHits.filter((h) => h.site === 'danbooru' && h.tags.includes('long_hair'));
   assert.ok(dan.length && dan.every((h) => h.tags.split(' ').filter((t) => !/^-?(rating|order):/.test(t)).length <= 2));
   const gel = env.booruHits.find((h) => h.site === 'gelbooru');
@@ -237,4 +237,44 @@ test('journal shows time observed and the sessions', async () => {
   assert.match(await text(p, '.stats'), /5 min\s*today/);
   assert.match(await text(p, '.stats'), /2\s*day streak/);
   assert.equal(await p.locator('.jitem').count(), 2);
+});
+
+test('art quality filter hides AI, low-rated and tiny images (and shows them with "Any")', async () => {
+  const count = async (quality) => {
+    const p = await newPage(env, { storage: { ldl_boorus: { quality } } });
+    await p.goto(env.url + '#/art/smile/danbooru/new');
+    await p.waitForSelector('.grid.art .thumb', { timeout: 20000 });
+    return p.locator('.grid.art .thumb').count();
+  };
+  const good = await count('good');
+  const any = await count('any');
+  assert.equal(good % 3, 0, 'only the 3 good posts per page');
+  assert.equal(any % 6, 0, 'with Any, the 3 low-quality posts per page come back');
+  assert.ok(any > good);
+});
+
+test('real photo refs: only in Find/Observe, never in Browse, minors still blocked', async () => {
+  const p = await newPage(env, { storage: { ldl_observe: { source: 'real', tag: '' } } });
+  await p.goto(env.url + '#/hentai');
+  await p.waitForSelector('.card');
+  assert.ok((await titles(p)).every((t) => !t.startsWith('Real')), 'Browse stays drawn-only');
+  await p.goto(env.url + '#/refs/real/Real');
+  await p.waitForSelector('.refrow', { timeout: 20000 });
+  const rows = await p.$$eval('.refrow-t', (r) => r.map((x) => x.textContent));
+  assert.ok(rows.length && rows.every((t) => t.startsWith('Real')), 'Find → Real photos lists real albums');
+  await p.goto(env.url + '#/observe');
+  await p.waitForSelector('#src');
+  assert.equal(await p.inputValue('#src'), 'real');
+  await p.click('[data-go=slow]');
+  await p.waitForSelector('.obs .o-title', { timeout: 20000 });
+  assert.equal(await text(p, '.o-title'), 'Just look');
+  noErrors(p);
+});
+
+test('turning off real photo refs removes the source', async () => {
+  const p = await newPage(env, { storage: { ldl_prefs: { show: { gay: false, futa: false, furry: false }, hideTags: [], realRefs: false } } });
+  await p.goto(env.url + '#/observe');
+  await p.waitForSelector('#src');
+  const opts = await p.$$eval('#src option', (o) => o.map((x) => x.value));
+  assert.ok(!opts.includes('real'));
 });

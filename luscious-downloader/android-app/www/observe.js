@@ -6,6 +6,7 @@ import { $, app, esc, store, shuffle, sheet, toast } from './util.js';
 import { loadBoards, boardItems, pagesFor, addToBoard } from './boards.js';
 import { postHidden } from './art.js';
 import { addEntry, updateEntry, stats, fmtMins, TYPES } from './journal.js';
+import { realRefs } from './photos.js';
 
 // ---------- what to look for (standard observation practice) ----------
 const SLOW_STEPS = [
@@ -40,6 +41,7 @@ const savePrefs = (p) => store.set('ldl_observe', p);
 // ---------- reference pool ----------
 async function pickRefs(source, n, ctx) {
   if (source === 'discover') return discover(observePrefs().tag, n, ctx);
+  if (source === 'real') return realRefs(n, observePrefs().tag, ctx);
   const d = loadBoards();
   const items = source.startsWith('board:') ? boardItems(source.slice(6), d) : d.items;
   if (!items.length) return [];
@@ -72,7 +74,8 @@ export function renderObserve(ctx) {
   const d = loadBoards();
   const s = stats();
   const boards = d.boards.filter((b) => boardItems(b.id, d).length);
-  const sources = [['boards', `All my refs (${d.items.length})`], ...boards.map((b) => [`board:${b.id}`, `${b.name} (${boardItems(b.id, d).length})`]), ['discover', 'Discover new refs']];
+  const sources = [['boards', `All my refs (${d.items.length})`], ...boards.map((b) => [`board:${b.id}`, `${b.name} (${boardItems(b.id, d).length})`]), ['discover', 'Discover new art refs'],
+    ...(ctx.prefs().realRefs ? [['real', 'Real photo refs']] : [])];
   if (!sources.some(([k]) => k === p.source) || (p.source === 'boards' && !d.items.length)) p.source = 'discover';
   const chips = (key, vals, fmt) => `<div class="chips wrap mini">${vals.map((v) => `<button data-k="${key}" data-v="${v}" class="${p[key] === v ? 'on' : ''}">${fmt(v)}</button>`).join('')}</div>`;
   const secs = (v) => (v >= 60 ? `${v / 60}m` : `${v}s`);
@@ -81,7 +84,7 @@ export function renderObserve(ctx) {
     <div class="box">
       <h3>References</h3>
       <select id="src">${sources.map(([k, v]) => `<option value="${esc(k)}" ${k === p.source ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>
-      <div id="tagWrap" ${p.source === 'discover' ? '' : 'hidden'}><input id="tag" placeholder="Optional tag, e.g. sitting, hand_focus, from_behind" value="${esc(p.tag)}" autocapitalize="none"></div>
+      <div id="tagWrap" ${p.source === 'discover' || p.source === 'real' ? '' : 'hidden'}><input id="tag" placeholder="Optional tag, e.g. sitting, hand_focus, from_behind" value="${esc(p.tag)}" autocapitalize="none"></div>
       ${!d.items.length ? '<p class="muted small">You have no saved refs yet, so sessions use new images from the art sites. To use your own, save images to a board: open any image, tap its middle, then ＋ Board.</p><a class="btn" href="#/refs" style="width:100%;margin-top:8px">🔎 Find refs to save</a>' : ''}
     </div>
     <div class="ocard"><div class="ohead"><i>👁</i><div><b>Slow look</b><p>One image, guided step by step: gesture, big shapes, light, negative space, proportions, edges.</p></div></div>
@@ -92,7 +95,7 @@ export function renderObserve(ctx) {
       ${chips('gesSecs', [30, 60, 120], secs)}${chips('gesCount', [5, 10, 20], (v) => `${v} poses`)}<button class="primary go" data-go="gesture">Start gesture</button></div>
     <div class="ocard"><div class="ohead"><i>◐</i><div><b>Value & shape study</b><p>Squint, group the values, then light against shadow. Trains you to see big shapes.</p></div></div>
       ${chips('valSecs', [60, 120, 180], secs)}${chips('valCount', [1, 3, 5], (v) => `${v} image${v > 1 ? 's' : ''}`)}<button class="primary go" data-go="values">Start value study</button></div>`;
-  $('#src').onchange = (e) => { p.source = e.target.value; savePrefs(p); $('#tagWrap').hidden = p.source !== 'discover'; };
+  $('#src').onchange = (e) => { p.source = e.target.value; savePrefs(p); $('#tagWrap').hidden = p.source !== 'discover' && p.source !== 'real'; };
   $('#tag').onchange = (e) => { p.tag = e.target.value.trim(); savePrefs(p); };
   app.querySelectorAll('[data-k]').forEach((b) => (b.onclick = () => { p[b.dataset.k] = +b.dataset.v; savePrefs(p); renderObserve(ctx); }));
   app.querySelectorAll('[data-go]').forEach((b) => (b.onclick = async () => {
@@ -102,7 +105,7 @@ export function renderObserve(ctx) {
     let images = [];
     try { images = await pickRefs(p.source, n, ctx); } catch {}
     b.disabled = false; b.textContent = `Start ${TYPES[type].name.toLowerCase()}`;
-    if (!images.length) return toast(p.source === 'discover' ? "Couldn't find references – check your connection" : 'No refs here yet – save some or pick Discover');
+    if (!images.length) return toast(p.source === 'discover' || p.source === 'real' ? "Couldn't find references – try another tag or check your connection" : 'No refs here yet – save some or pick Discover');
     startObserve({ type, images, opts: { ...p } }, ctx);
   }));
 }

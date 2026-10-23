@@ -10,13 +10,16 @@ export function startBooru(port) {
   const SPECIAL = ['loli smile', 'yaoi 2boys', 'photo_(medium) cosplay', 'thighhighs smile', 'long_hair hand_focus', 'sitting'];
   function posts(site, page) {
     const out = [];
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 13; i++) {
       const id = page * 100 + i;
       const rating = i === 9 ? 'g' : i % 2 ? 'e' : 'q';
       const img = `${base}/img/${site}_${id}.${i === 8 ? 'mp4' : 'png'}`;
-      const tags = SPECIAL[i % 6];
-      if (site === 'danbooru') out.push({ id, file_url: img, large_file_url: img, preview_file_url: img, tag_string: tags, tag_string_artist: 'artist_' + (i % 3), rating, image_width: 800, image_height: 1200, score: 100 - i });
-      else out.push({ id, file_url: img, sample_url: img, preview_url: img, tags, rating: site === 'gelbooru' ? { e: 'explicit', q: 'questionable', g: 'general' }[rating] : rating === 'g' ? 's' : rating, width: 800, height: 1200, score: 100 - i });
+      // 10–12: planted low-quality posts (AI image, very low score, tiny image)
+      const tags = i === 10 ? 'ai-generated smile' : i >= 11 ? 'smile' : SPECIAL[i % 6];
+      const score = i === 11 ? 1 : 100 - i;
+      const w = i === 12 ? 300 : 800, h = i === 12 ? 400 : 1200;
+      if (site === 'danbooru') out.push({ id, file_url: img, large_file_url: img, preview_file_url: img, tag_string: tags, tag_string_artist: 'artist_' + (i % 3), rating: i >= 10 ? 'e' : rating, image_width: w, image_height: h, score });
+      else out.push({ id, file_url: img, sample_url: img, preview_url: img, tags, rating: i >= 10 ? (site === 'gelbooru' ? 'explicit' : 'e') : site === 'gelbooru' ? { e: 'explicit', q: 'questionable', g: 'general' }[rating] : rating === 'g' ? 's' : rating, width: w, height: h, score });
     }
     return out;
   }

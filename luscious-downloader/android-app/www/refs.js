@@ -4,6 +4,7 @@ import { $, app, esc, store, imgTag, toast } from './util.js';
 import { addToBoard } from './boards.js';
 import * as B from './boorus.js';
 import { openPosts, postHidden } from './art.js';
+import { realAllowed } from './photos.js';
 
 // label -> luscious search term
 export const REF_GROUPS = {
@@ -18,11 +19,12 @@ export const REF_GROUPS = {
 };
 
 export function renderRefs(ctx) {
+  const SOURCES = [['art', 'Art sites'], ...(ctx.prefs().realRefs ? [['real', 'Real photos']] : []), ['hentai', 'Luscious']];
   let sec = store.get('ldl_ref_sec', 'art');
-  if (!['art', 'hentai'].includes(sec)) sec = 'art';
+  if (!SOURCES.some(([k]) => k === sec)) sec = 'art';
   const recent = store.get('ldl_ref_recent', []);
   app.innerHTML = `${ctx.libraryNav('refs')}
-    <div class="chips" style="margin-bottom:10px">${[['art', 'Art sites (best for refs)'], ['hentai', 'Luscious']].map(([s, v]) => `<button data-sec="${s}" class="${s === sec ? 'on' : ''}">${v}</button>`).join('')}</div>
+    <div class="chips" style="margin-bottom:10px">${SOURCES.map(([s, v]) => `<button data-sec="${s}" class="${s === sec ? 'on' : ''}">${v}</button>`).join('')}</div>
     <form id="refQ" class="row" style="margin-top:0"><input name="q" placeholder="Find refs for… (e.g. hands holding, side braid)" autocomplete="off" style="flex:1"><button class="primary">Find</button></form>
     ${recent.length ? `<h3 class="refh">Recent</h3><div class="chips wrap">${recent.map((t) => `<a class="chip" href="#/refs/${sec}/${encodeURIComponent(t)}">${esc(t)}</a>`).join('')}</div>` : ''}
     ${Object.entries(REF_GROUPS).map(([g, items]) => `<h3 class="refh">${esc(g)}</h3>
@@ -48,6 +50,7 @@ export async function renderRefResults(sec, term, label, ctx) {
   const head = `${ctx.libraryNav('refs')}<div class="row" style="margin-top:0;justify-content:space-between"><h2 style="margin:0">🔎 ${title}</h2><a class="btn" href="#/refs">All categories</a></div>`;
   app.innerHTML = head + '<div class="center"><div class="spinner"></div></div>';
   if (sec === 'art') return artGrid(term, title, head, ctx);
+  if (sec === 'real') return albumStrips('real', term, head, ctx);
   let pics = null;
   try { pics = await L.searchPictures(term, 1); } catch { pics = null; }
   if (pics && pics.items.length) return pictureGrid(sec, term, title, head, pics, ctx);
@@ -96,7 +99,8 @@ async function albumStrips(sec, term, head, ctx) {
     while (hasNext && added < 8) {
       const res = await L.listAlbums({ section: sec, q: term, sort: 'rating_all_time', page: ++page });
       hasNext = !!res.info?.has_next_page && res.items.length > 0;
-      for (const a of res.items) if (!ctx.hiddenReason(a) && !rows.some((r) => r.album.id === a.id)) { rows.push({ album: a, pics: null }); added++; }
+      const ok = (a) => (sec === 'real' ? realAllowed(a, ctx) : !ctx.hiddenReason(a));
+      for (const a of res.items) if (ok(a) && !rows.some((r) => r.album.id === a.id)) { rows.push({ album: a, pics: null }); added++; }
       if (page > 6) break;
     }
   };

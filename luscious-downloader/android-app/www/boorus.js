@@ -17,12 +17,37 @@ export function booruPrefs() {
   return {
     enabled: { danbooru: true, gelbooru: true, yandere: true, konachan: true },
     ratings: 'nsfw', // 'nsfw' = questionable + explicit, 'explicit' = explicit only
+    quality: 'good', // 'any' | 'good' | 'best'
     danbooruUser: '', danbooruKey: '', gelbooruUser: '', gelbooruKey: '',
     ...store.get('ldl_boorus', {}),
   };
 }
 export const saveBooruPrefs = (p) => store.set('ldl_boorus', p);
 export const enabledSites = () => Object.keys(SITES).filter((k) => booruPrefs().enabled[k]);
+
+// ---------- quality ----------
+// Minimum community score per site (scores aren't comparable between sites).
+const MIN_SCORE = {
+  danbooru: { good: 15, best: 50 }, gelbooru: { good: 8, best: 25 },
+  yandere: { good: 20, best: 60 }, konachan: { good: 20, best: 60 },
+};
+const MIN_SIDE = { good: 700, best: 1000 }; // shortest side in pixels
+// Tags that mark AI images or art the site itself flags as flawed.
+const BAD_TAGS = new Set(['ai-generated', 'ai_generated', 'ai-assisted', 'ai_assisted', 'ai_art', 'stable_diffusion', 'novelai', 'midjourney',
+  'bad_anatomy', 'bad_hands', 'bad_feet', 'bad_proportions', 'bad_perspective', 'anatomical_nonsense', 'artistic_error', 'poorly_drawn',
+  'lowres', 'jpeg_artifacts', 'ms_paint', 'crayon', 'scribble', 'meme', 'edit', 'third-party_edit', 'md5_mismatch']);
+export const QUALITY = {
+  any: 'Any – show everything',
+  good: 'Good – hide low-rated, small and AI images (recommended)',
+  best: 'Best only – top-rated, large images',
+};
+export function goodEnough(x, site, q = booruPrefs().quality) {
+  if (x.tags.some((t) => BAD_TAGS.has(t)) && q !== 'any') return false;
+  if (q === 'any') return true;
+  if ((x.score ?? 0) < MIN_SCORE[site][q]) return false;
+  const side = Math.min(x.width || 0, x.height || 0);
+  return !side || side >= MIN_SIDE[q];
+}
 
 const enc = encodeURIComponent;
 const toTags = (q) => String(q || '').trim().toLowerCase().split(/[\s,]+/).filter(Boolean);
@@ -67,6 +92,7 @@ export async function searchSite(site, query, page = 1, sort = 'new', limit = 40
     raw = await getJson(url);
   } else if (site === 'gelbooru') {
     const tags = [...user, p.ratings === 'explicit' ? 'rating:explicit' : '-rating:general', ...MINOR_TAGS.map((t) => `-${t}`)];
+    if (p.quality !== 'any') tags.push(`score:>=${MIN_SCORE.gelbooru[p.quality]}`, '-ai-generated');
     if (sort === 'top') tags.push('sort:score:desc');
     url = `https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&limit=${limit}&pid=${page - 1}&tags=${enc(tags.join(' '))}`;
     if (p.gelbooruUser && p.gelbooruKey) url += `&user_id=${enc(p.gelbooruUser)}&api_key=${enc(p.gelbooruKey)}`;
@@ -74,7 +100,8 @@ export async function searchSite(site, query, page = 1, sort = 'new', limit = 40
     raw = Array.isArray(j) ? j : j?.post || [];
   } else {
     const home = SITES[site].home;
-    const tags = [...user, p.ratings === 'explicit' ? 'rating:e' : '-rating:s', ...MINOR_TAGS.slice(0, 2).map((t) => `-${t}`)];
+    const tags = [...user.slice(0, 2), p.ratings === 'explicit' ? 'rating:e' : '-rating:s', ...MINOR_TAGS.slice(0, 2).map((t) => `-${t}`)];
+    if (p.quality !== 'any') tags.push(`score:>=${MIN_SCORE[site][p.quality]}`);
     if (sort === 'top') tags.push('order:score');
     url = `${home}/post.json?limit=${limit}&page=${page}&tags=${enc(tags.join(' '))}`;
     raw = await getJson(url);
@@ -83,7 +110,8 @@ export async function searchSite(site, query, page = 1, sort = 'new', limit = 40
     .map((r) => post(site, r))
     .filter((x) => x.original || x.sample)
     .filter((x) => !['mp4', 'webm', 'zip', 'swf'].includes(x.ext))
-    .filter((x) => (p.ratings === 'explicit' ? x.rating === 'explicit' : x.rating === 'explicit' || x.rating === 'questionable'));
+    .filter((x) => (p.ratings === 'explicit' ? x.rating === 'explicit' : x.rating === 'explicit' || x.rating === 'questionable'))
+    .filter((x) => goodEnough(x, site, p.quality));
 }
 
 // Search several sites at once and interleave the results. Errors from one site don't stop the others.
