@@ -13,6 +13,8 @@ import { loadBoards, LIKED_BOARD } from './boards.js';
 import { renderSimilar, showSimilar } from './similar.js';
 import { renderCheck } from './diag.js';
 import { needsOnboarding, renderOnboarding, renderHelp } from './onboarding.js';
+import { renderObserve, startObserve, observePrefs } from './observe.js';
+import { renderJournal, renderEntry } from './journal.js';
 
 function showError(e) {
   const details = e?.details?.length ? `<details><summary>Details</summary><pre class="log">${esc(e.details.join('\n'))}</pre></details>` : '';
@@ -200,7 +202,7 @@ function renderSection(sec, q, sort) {
     section: sec,
     title: q ? `${SECTIONS[sec].title}: “${esc(q)}”` : SECTIONS[sec].title,
     fetch: (page) => L.listAlbums({ section: sec, q, sort, page }),
-    header: () => (sec === 'manga' && !q ? continueRow() : '') + sortBar(sec, q, sort),
+    header: () => libraryNav('browse') + (sec === 'manga' && !q ? continueRow() : '') + sortBar(sec, q, sort),
   });
 }
 function continueRow() {
@@ -609,17 +611,18 @@ async function renderSettings() {
 // ---------- library (boards, artists, favorites, downloads) ----------
 let newArtists = 0;
 function libraryNav(active) {
-  const tabs = { refs: '🔎 Refs', boards: '🎨 Boards', artists: `👤 Artists${newArtists ? ` <span class="newbadge">${newArtists}</span>` : ''}`, favorites: '♥ Favorites', downloads: '⬇ Saved' };
+  const tabs = { boards: '🎨 Boards', refs: '🔎 Find', browse: '🌐 Browse', feed: '✨ Discover', favorites: '♥ Favorites', downloads: '⬇ Saved' };
   return `<div class="chips libnav">${Object.entries(tabs).map(([k, v]) => `<a class="chip ${k === active ? 'on' : ''}" href="#/${k}">${v}</a>`).join('')}</div>`;
 }
 const refreshNewBadge = () => checkNew().then((n) => {
   newArtists = n;
-  $('#tabbar a[data-tab=library]').classList.toggle('dot', n > 0);
+  $('#tabbar a[data-tab=refs]')?.classList.toggle('dot', n > 0);
 }).catch(() => {});
 
 // Shared helpers handed to the boards / practice / artists screens.
 const ctx = {
   getTarget, hiddenReason, card, showError, libraryNav, prefs, setPrefs, HIDE_RULES, route: () => route(),
+  startObserve: (o) => startObserve(o, ctx),
   compression: () => prefs().compression,
   openReader: (o) => openReader(o),
 };
@@ -634,15 +637,21 @@ function route() {
     return renderOnboarding(ctx);
   }
   if (SECTIONS[kind]) section = kind;
-  const LIB = ['library', 'favorites', 'downloads', 'boards', 'board', 'practice', 'artists', 'artist', 'login', 'refs'];
-  const isFeed = kind === '' || kind === 'feed' || kind === 'taste';
-  const tab = isFeed ? 'feed' : LIB.includes(kind) || kind === 'board-liked' ? 'library' : kind === 'settings' ? 'settings' : 'browse';
+  // Tabs: Observe (home) · Refs (collecting) · Journal · Settings
+  const OBSERVE = ['', 'observe', 'practice'];
+  const tab = OBSERVE.includes(kind) ? 'observe' : kind === 'journal' ? 'journal' : kind === 'settings' || kind === 'check' || kind === 'help' ? 'settings' : 'refs';
   document.querySelectorAll('#tabbar a').forEach((n) => n.classList.toggle('on', n.dataset.tab === tab));
   if (SECTIONS[kind]) document.querySelectorAll('#sections a').forEach((n) => n.classList.toggle('on', n.dataset.tab === kind));
   // The search bar only shows while browsing; the feed uses the whole screen.
   document.body.classList.toggle('browsing', !!SECTIONS[kind] || kind === 'browse');
-  document.body.classList.toggle('feedmode', kind === '' || kind === 'feed');
-  if (kind === '' || kind === 'feed') return renderFeed(ctx);
+  document.body.classList.toggle('feedmode', kind === 'feed');
+  if (kind === '' || kind === 'observe') {
+    if (a === 'board' && b) { store.set('ldl_observe', { ...observePrefs(), source: `board:${b}` }); location.replace('#/observe'); return; }
+    return renderObserve(ctx);
+  }
+  if (kind === 'practice') { location.replace(a === 'board' && b ? `#/observe/board/${b}` : '#/observe'); return; }
+  if (kind === 'journal') return a ? renderEntry(a, ctx) : renderJournal();
+  if (kind === 'feed') return renderFeed(ctx);
   if (kind === 'taste') return renderTaste(ctx);
   if (kind === 'similar') return renderSimilar(ctx);
   if (kind === 'check') return renderCheck(ctx);
@@ -667,7 +676,8 @@ function route() {
   if (kind === 'downloads') return renderDownloads();
   if (kind === 'settings') return renderSettings();
   if (kind === 'login') return renderLogin(a ? decodeURIComponent(a) : '#/favorites');
-  if (kind === 'library' || kind === 'refs') {
+  if (kind === 'library') { location.replace('#/boards'); return; }
+  if (kind === 'refs') {
     const [, , sec, term, label] = location.hash.split('/');
     return term ? renderRefResults(sec, decodeURIComponent(term), decodeURIComponent(label || ''), ctx) : renderRefs(ctx);
   }

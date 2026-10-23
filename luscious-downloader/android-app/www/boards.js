@@ -104,7 +104,7 @@ export async function pagesFor(items) {
 export function renderBoards(ctx) {
   const d = loadBoards();
   app.innerHTML = `${ctx.libraryNav('boards')}
-    <div class="row" style="margin-top:0"><button class="primary" id="newBoard">＋ New board</button><a class="btn" href="#/practice">✏️ Gesture practice</a></div>
+    <div class="row" style="margin-top:0"><button class="primary" id="newBoard">＋ New board</button><a class="btn" href="#/observe">👁 Observe</a></div>
     ${d.boards.length ? `<div class="grid boards">${d.boards.map((b) => {
       const items = boardItems(b.id, d);
       const covers = items.slice(0, 4).map((i) => imgTag(i.thumb)).join('');
@@ -131,7 +131,7 @@ export async function renderBoard(id, ctx) {
         <button id="editB">${editing ? 'Done' : 'Edit'}</button>
       </div>
       <div class="row">
-        ${items.length ? `<a class="btn primary" href="#/practice/board/${b.id}">✏️ Practice with this board</a>` : ''}
+        ${items.length ? `<a class="btn primary" href="#/observe/board/${b.id}">👁 Observe this board</a>` : ''}
         ${editing ? '<button id="renameB">Rename</button><button id="deleteB">Delete board</button>' : ''}
       </div>
       ${editing ? '<p class="muted small">Tap an image for options.</p>' : ''}

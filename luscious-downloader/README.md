@@ -6,6 +6,15 @@ A small app to browse and download albums from luscious.net. It has a web page a
 
 ## Miwaku – Android app (APK)
 
+**Miwaku is built around observation.** Looking is the core skill of drawing, so the app's home is **👁 Observe**:
+- **Slow look**: one image, guided step by step (gesture, big shapes, light, light and shadow, negative space, proportions, edges, overlaps, details, fresh eyes), with the matching aid switched on at each step (squint blur, 4-value filter, light/shadow, negative, grid, mirror). Take notes as you go.
+- **Memory drawing** (Lecoq de Boisbaudran's method): study an image, it hides, draw from memory, then compare, rate yourself and note what you missed.
+- **Gesture**: timed 30s–2min poses, line of action first.
+- **Value & shape study**: squint, group the values, then light against shadow.
+- **📓 Journal**: every session with images, notes, ratings and reflections; time observed today, streak and totals.
+- **🗂 Refs**: collect references into boards; find them by body part, clothing or pose, browse luscious and the art sites, or discover new ones.
+
+
 Install on your phone from this link (open it on the phone):
 
 **https://github.com/asyrel/twitch-chatgpt/releases/download/miwaku-latest/Miwaku.apk**

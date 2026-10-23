@@ -24,7 +24,8 @@ test('first run asks for 18+ and walks through setup', async () => {
   assert.equal(await p.$eval('input[name=loc]:checked', (e) => e.value), '1', 'SD card chosen by default');
   await p.click('#next');
   await p.click('#start');
-  await p.waitForSelector('.f-card', { timeout: 20000 });
+  await p.waitForSelector('.ocard', { timeout: 20000 });
+  assert.equal(await p.$eval('#tabbar a.on', (a) => a.dataset.tab), 'observe', 'opens on Observe');
   assert.equal(await p.evaluate(() => localStorage.getItem('ldl_onboarded')), 'true');
   noErrors(p);
 });
@@ -71,9 +72,9 @@ test('Art tab filters every planted bad post and respects the Danbooru 2-tag lim
   noErrors(p);
 });
 
-test('For You: like saves to ♥ Liked and teaches the taste model; dislike moves on', async () => {
+test('Discover feed: like saves to ♥ Liked and teaches the taste model; dislike moves on', async () => {
   const p = await newPage(env);
-  await p.goto(env.url);
+  await p.goto(env.url + '#/feed');
   await p.waitForSelector('.f-card .f-like', { timeout: 20000 });
   await p.click('.f-card[data-i="0"] .f-like');
   await p.waitForTimeout(200);
@@ -124,7 +125,7 @@ test('Refs: body-part search on art sites returns single tagged images', async (
 
 test('More like this finds similar images', async () => {
   const p = await newPage(env);
-  await p.goto(env.url);
+  await p.goto(env.url + '#/feed');
   await p.waitForSelector('.f-card .f-sim', { timeout: 20000 });
   await p.click('.f-card[data-i="0"] .f-sim');
   await p.waitForSelector('.grid.thumbs .thumb', { timeout: 20000 });
@@ -162,4 +163,78 @@ test('sort options are detected from the site', async () => {
   await p.waitForFunction(() => document.querySelectorAll('.sortbar .chip').length > 3, null, { timeout: 30000 });
   const sorts = await p.evaluate(() => JSON.parse(localStorage.ldl_sorts).values);
   assert.ok(sorts.includes('rating_30_days') && !sorts.includes('rating_14_days'));
+});
+
+// ---------- observation ----------
+const DISCOVER = { ldl_observe: { source: 'discover', tag: '', slowMins: 5, memLook: 30, memCount: 2, gesSecs: 30, gesCount: 5, valSecs: 60, valCount: 1 } };
+
+test('slow look: guided steps switch on the right aid, notes are kept, saved to the journal', async () => {
+  const p = await newPage(env, { storage: DISCOVER });
+  await p.goto(env.url + '#/observe');
+  await p.click('[data-go=slow]');
+  await p.waitForSelector('.obs .o-title', { timeout: 20000 });
+  assert.equal(await text(p, '.o-title'), 'Just look');
+  await p.click('[data-c=next]'); // Gesture
+  await p.click('[data-c=note]');
+  await p.fill('.sheet textarea', 'line of action runs from the head down the left leg');
+  await p.click('.sheet button.primary');
+  await p.click('[data-c=next]'); // Big shapes
+  assert.equal(await text(p, '.o-title'), 'Big shapes');
+  assert.match(await p.$eval('.o-img', (i) => i.style.filter), /blur/, 'squint aid on');
+  assert.ok(await p.$eval('[data-aid=squint]', (b) => b.classList.contains('on')));
+  for (let i = 0; i < 4; i++) await p.click('[data-c=next]'); // Light, Light and shadow, Negative space, Proportions
+  assert.equal(await text(p, '.o-title'), 'Proportions');
+  assert.ok(await p.$eval('.o-wrap', (w) => w.classList.contains('grid')), 'grid aid on');
+  while ((await text(p, '[data-c=next]')) !== 'Finish') await p.click('[data-c=next]');
+  assert.ok(await p.$eval('.o-wrap', (w) => w.classList.contains('flip')), 'last step mirrors the image');
+  await p.click('[data-c=next]');
+  await p.fill('.refl', 'I noticed the shadow shapes only at the end');
+  await p.click('[data-done]');
+  await p.waitForSelector('#refl', { timeout: 10000 });
+  const j = await p.evaluate(() => JSON.parse(localStorage.ldl_journal));
+  assert.equal(j[0].type, 'slow');
+  assert.equal(j[0].notes[0].step, 'Gesture');
+  assert.match(j[0].reflection, /shadow shapes/);
+  noErrors(p);
+});
+
+test('memory drawing: look, image hides, reveal, rate and note what was missed', async () => {
+  const p = await newPage(env, { storage: DISCOVER });
+  await p.goto(env.url + '#/observe');
+  await p.click('[data-go=memory]');
+  await p.waitForSelector('.obs .o-title', { timeout: 20000 });
+  assert.equal(await text(p, '.o-title'), 'Memorise');
+  assert.equal(await p.isVisible('.o-hidden'), false);
+  await p.click('[data-c=next]');
+  assert.equal(await text(p, '.o-title'), 'Draw from memory');
+  assert.equal(await p.isVisible('.o-hidden'), true, 'image hidden while drawing');
+  await p.click('[data-c=reveal]');
+  assert.equal(await text(p, '.o-title'), 'Compare');
+  await p.click('[data-star="4"]');
+  await p.fill('.missed', 'the angle of the hips');
+  await p.click('[data-c=next]'); // next image
+  assert.match(await text(p, '.o-prog'), /Image 2\/2/);
+  await p.click('[data-c=next]'); await p.click('[data-c=reveal]'); await p.click('[data-star="2"]');
+  await p.click('[data-c=next]'); // finish
+  await p.click('[data-done]');
+  await p.waitForSelector('#refl', { timeout: 10000 });
+  const j = await p.evaluate(() => JSON.parse(localStorage.ldl_journal));
+  assert.equal(j[0].type, 'memory');
+  assert.equal(j[0].avgRating, 3);
+  assert.equal(j[0].images[0].missed, 'the angle of the hips');
+  assert.match(await text(p, '#app'), /What I missed/);
+  noErrors(p);
+});
+
+test('journal shows time observed and the sessions', async () => {
+  const now = Date.now();
+  const p = await newPage(env, { storage: { ldl_journal: [
+    { id: 'a', at: now, type: 'gesture', seconds: 300, images: [] },
+    { id: 'b', at: now - 864e5, type: 'slow', seconds: 600, images: [] },
+  ] } });
+  await p.goto(env.url + '#/journal');
+  await p.waitForSelector('.stats');
+  assert.match(await text(p, '.stats'), /5 min\s*today/);
+  assert.match(await text(p, '.stats'), /2\s*day streak/);
+  assert.equal(await p.locator('.jitem').count(), 2);
 });

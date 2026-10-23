@@ -61,7 +61,7 @@ async function refill(ctx) {
 export async function renderFeed(ctx) {
   if (!state) state = { items: [], keys: new Set(), cur: 0, reacted: {}, shownAt: 0 };
   app.innerHTML = `<div class="feed">
-      <div class="f-top"><b>✨ For You</b><button id="tasteBtn" class="f-pill">Your taste</button></div>
+      <div class="f-top"><a class="f-pill" href="#/boards">‹ Refs</a><b>✨ Discover</b><button id="tasteBtn" class="f-pill">Your taste</button></div>
       <div class="f-scroll"></div>
     </div>`;
   $('#tasteBtn').onclick = () => (location.hash = '#/taste');

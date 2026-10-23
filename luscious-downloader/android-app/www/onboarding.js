@@ -9,8 +9,8 @@ export async function renderOnboarding(ctx, step = 0) {
   const done = () => {
     store.set('ldl_onboarded', true);
     document.body.classList.remove('onboarding');
-    location.hash = '#/feed';
-    if (location.hash === '#/feed') ctx.route();
+    location.hash = '#/observe';
+    if (location.hash === '#/observe') ctx.route();
   };
   const dots = (n) => `<div class="ob-dots">${[0, 1, 2, 3].map((i) => `<i class="${i === n ? 'on' : ''}"></i>`).join('')}</div>`;
 
@@ -18,7 +18,7 @@ export async function renderOnboarding(ctx, step = 0) {
     app.innerHTML = `<div class="ob">
       <div class="ob-logo"><img src="icon.png" alt=""></div>
       <h1>Welcome to Miwaku</h1>
-      <p class="muted">A reference and inspiration app for NSFW artists: hentai, manga and anime art, with drawing study tools.</p>
+      <p class="muted">Train your eye. Collect NSFW art references and observe them the way artists learn to: slow looking, memory drawing, gesture and value studies.</p>
       <div class="box ob-age"><b>18+ only</b><p class="small muted">Miwaku shows sexually explicit drawn content. Real-life photos are never shown, and anything involving minors is always blocked.</p></div>
       <button class="primary" id="ageYes">I'm 18 or older</button>
       <button id="ageNo">I'm under 18</button>
@@ -68,9 +68,9 @@ export async function renderOnboarding(ctx, step = 0) {
   app.innerHTML = `<div class="ob">
     <h1>How it works</h1>
     <div class="ob-tips">
-      <div><i>✨</i><div><b>For You</b><p>Swipe up through images. Tap ♥ or double-tap for more like it; 👎 for less. It learns your taste.</p></div></div>
-      <div><i>🔍</i><div><b>Browse</b><p>Hentai and manga from luscious.net, and art from Danbooru, Gelbooru, Yande.re and Konachan.</p></div></div>
-      <div><i>📚</i><div><b>Library</b><p>Refs by body part, clothing and pose; your boards, artists, favorites and downloads.</p></div></div>
+      <div><i>👁</i><div><b>Observe</b><p>Slow look, memory drawing, gesture and value studies, guided step by step. Looking is the skill; this trains it.</p></div></div>
+      <div><i>🗂</i><div><b>Refs</b><p>Collect references into boards. Find them by body part, clothing or pose, browse luscious and the art sites, or discover new ones.</p></div></div>
+      <div><i>📓</i><div><b>Journal</b><p>Every session is saved with your notes, what you missed, your time observed and your streak.</p></div></div>
       <div><i>🖌</i><div><b>Study tools</b><p>Tap the middle of any image: mirror, grayscale, values, grid, palette and color picker.</p></div></div>
     </div>
     <button class="primary" id="start">Start</button>
