@@ -612,7 +612,8 @@ async function renderSettings() {
 let newArtists = 0;
 function libraryNav(active) {
   const tabs = { boards: '🎨 Boards', refs: '🔎 Find', browse: '🌐 Browse', feed: '✨ Discover', favorites: '♥ Favorites', downloads: '⬇ Saved' };
-  return `<div class="chips libnav">${Object.entries(tabs).map(([k, v]) => `<a class="chip ${k === active ? 'on' : ''}" href="#/${k}">${v}</a>`).join('')}</div>`;
+  if (active === 'browse') return ''; // browse pages have their own search bar and Hentai/Art/Manga switch
+  return `<div class="libnav">${Object.entries(tabs).map(([k, v]) => `<a class="${k === active ? 'on' : ''}" href="#/${k}">${v}</a>`).join('')}</div>`;
 }
 const refreshNewBadge = () => checkNew().then((n) => {
   newArtists = n;

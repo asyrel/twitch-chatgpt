@@ -73,7 +73,7 @@ export function renderObserve(ctx) {
   const s = stats();
   const boards = d.boards.filter((b) => boardItems(b.id, d).length);
   const sources = [['boards', `All my refs (${d.items.length})`], ...boards.map((b) => [`board:${b.id}`, `${b.name} (${boardItems(b.id, d).length})`]), ['discover', 'Discover new refs']];
-  if (!sources.some(([k]) => k === p.source)) p.source = d.items.length ? 'boards' : 'discover';
+  if (!sources.some(([k]) => k === p.source) || (p.source === 'boards' && !d.items.length)) p.source = 'discover';
   const chips = (key, vals, fmt) => `<div class="chips wrap mini">${vals.map((v) => `<button data-k="${key}" data-v="${v}" class="${p[key] === v ? 'on' : ''}">${fmt(v)}</button>`).join('')}</div>`;
   const secs = (v) => (v >= 60 ? `${v / 60}m` : `${v}s`);
   app.innerHTML = `
@@ -82,7 +82,7 @@ export function renderObserve(ctx) {
       <h3>References</h3>
       <select id="src">${sources.map(([k, v]) => `<option value="${esc(k)}" ${k === p.source ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>
       <div id="tagWrap" ${p.source === 'discover' ? '' : 'hidden'}><input id="tag" placeholder="Optional tag, e.g. sitting, hand_focus, from_behind" value="${esc(p.tag)}" autocapitalize="none"></div>
-      ${!d.items.length ? '<p class="muted small">Save refs to boards from 🗂 Refs (＋ Board in the viewer), or use Discover.</p>' : ''}
+      ${!d.items.length ? '<p class="muted small">You have no saved refs yet, so sessions use new images from the art sites. To use your own, save images to a board: open any image, tap its middle, then ＋ Board.</p><a class="btn" href="#/refs" style="width:100%;margin-top:8px">🔎 Find refs to save</a>' : ''}
     </div>
     <div class="ocard"><div class="ohead"><i>👁</i><div><b>Slow look</b><p>One image, guided step by step: gesture, big shapes, light, negative space, proportions, edges.</p></div></div>
       ${chips('slowMins', [5, 10, 15], (v) => `${v} min`)}<button class="primary go" data-go="slow">Start slow look</button></div>
@@ -166,10 +166,10 @@ export function startObserve({ type, images, opts = {} }, ctx) {
       <div class="o-aids">${Object.entries(AIDS).map(([k2, v]) => `<button data-aid="${k2}">${v}</button>`).join('')}</div>
       <div class="o-phase"></div>
       <div class="o-ctrl">
-        <button data-c="end" aria-label="End">✕</button>
-        <button data-c="note" aria-label="Note">✎</button>
-        <button data-c="pause" aria-label="Pause">⏸</button>
-        <button data-c="board" aria-label="Save to board">＋</button>
+        <button data-c="end" aria-label="End session">✕<span>End</span></button>
+        <button data-c="note" aria-label="Write a note">✎<span>Note</span></button>
+        <button data-c="pause" aria-label="Pause">⏸<span>Pause</span></button>
+        <button data-c="board" aria-label="Save to board">＋<span>Save</span></button>
         <button data-c="next" class="primary" aria-label="Next">Next ›</button>
       </div>
     </div>`;
@@ -231,6 +231,7 @@ export function startObserve({ type, images, opts = {} }, ctx) {
     } else phase.innerHTML = '';
     phase.querySelector('[data-c=reveal]')?.addEventListener('click', next);
     $r('[data-c=next]').textContent = k === steps.length - 1 ? 'Finish' : st.phase === 'compare' ? 'Next image ›' : 'Next ›';
+    $r('[data-c=next]').hidden = st.phase === 'draw'; // "Reveal and compare" is the only next step while drawing
     applyAids(st);
     left = st.secs;
     setTime();
@@ -268,7 +269,12 @@ export function startObserve({ type, images, opts = {} }, ctx) {
     const c = e.target.closest('[data-c]')?.dataset.c;
     if (c === 'end') history.back();
     if (c === 'next') next();
-    if (c === 'pause') { paused = !paused; e.target.textContent = paused ? '▶' : '⏸'; root.classList.toggle('paused', paused); }
+    if (c === 'pause') {
+      paused = !paused;
+      const b = e.target.closest('[data-c]');
+      b.innerHTML = paused ? '▶<span>Resume</span>' : '⏸<span>Pause</span>';
+      root.classList.toggle('paused', paused);
+    }
     if (c === 'note') {
       const st = steps[k];
       const was = paused; paused = true;

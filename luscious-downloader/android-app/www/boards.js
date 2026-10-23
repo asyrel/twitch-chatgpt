@@ -26,9 +26,11 @@ export function pickBoard(title = 'Save to board') {
   const boards = [...d.boards].sort((a, b) => (b.id === last) - (a.id === last) || a.name.localeCompare(b.name));
   return sheet(`<h3>${esc(title)}</h3>
     ${boards.map((b) => `<button class="opt" data-b="${b.id}"><span>${esc(b.name)}</span><span class="muted small">${boardItems(b.id, d).length}</span></button>`).join('')}
-    <form class="newb row" style="margin-top:8px"><input name="n" placeholder="New board name (e.g. Poses)" autocomplete="off" style="flex:1"><button class="primary">Create</button></form>`,
+    <form class="newb row" style="margin-top:8px"><input name="n" placeholder="New board name" autocomplete="off" style="flex:1"><button class="primary">Create</button></form>
+    <div class="chips wrap mini">${['Poses', 'Hands', 'Faces', 'Anatomy', 'Lighting', 'Folds & clothing', 'Color'].filter((n) => !boards.some((b) => b.name === n)).map((n) => `<button type="button" data-new="${n}">＋ ${n}</button>`).join('')}</div>`,
   (el, close) => {
     el.querySelectorAll('[data-b]').forEach((btn) => (btn.onclick = () => close(d.boards.find((b) => b.id === btn.dataset.b))));
+    el.querySelectorAll('[data-new]').forEach((b) => (b.onclick = () => close(createBoard(b.dataset.new))));
     el.querySelector('.newb').onsubmit = (e) => {
       e.preventDefault();
       const n = new FormData(e.target).get('n');
@@ -111,7 +113,8 @@ export function renderBoards(ctx) {
       return `<a class="card" href="#/board/${b.id}"><div class="bcover n${Math.min(items.length, 4)}">${covers || '<div class="bempty">🎨</div>'}</div>
         <div class="t">${esc(b.name)}</div><div class="n">${items.length} image${items.length === 1 ? '' : 's'}</div></a>`;
     }).join('')}</div>`
-    : `<div class="box"><h3>No boards yet</h3><p class="muted small">Open any album, tap the middle of a page for the menu, then tap <b>＋ Board</b> to save that page. Make boards like “Poses”, “Hands”, “Lighting” or “Color”.</p></div>`}`;
+    : `<div class="box"><h3>Start collecting refs</h3><p class="muted small">Boards hold the images you want to observe. Open any image, tap its middle, then <b>＋ Board</b>. Make boards like “Poses”, “Hands”, “Lighting” or “Folds”.</p>
+        <div class="row"><a class="btn primary" href="#/refs">🔎 Find by body part</a><a class="btn" href="#/feed">✨ Discover</a><a class="btn" href="#/browse">🌐 Browse</a></div></div>`}`;
   $('#newBoard').onclick = async () => {
     const name = prompt('Board name (e.g. Poses, Hands, Lighting)');
     if (name && name.trim()) { createBoard(name); renderBoards(ctx); }

@@ -375,3 +375,35 @@ details.help p { color:var(--muted); font-size:14px; margin:10px 0 2px; }
 .jthumbs img { width:46px; height:60px; object-fit:cover; border-radius:8px; margin-right:-14px; border:2px solid var(--panel); background:#222; }
 .jtext { display:flex; flex-direction:column; gap:2px; min-width:0; padding-left:14px; }
 .jtext span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* =================== UX/UI pass =================== */
+/* Radios and checkboxes were stretched full-width by ".box input", hiding their labels */
+.box input[type=radio], .box input[type=checkbox], .switch input[type=radio], .switch input[type=checkbox] { width:20px !important; min-width:20px; height:20px; flex:none; margin:0; }
+.switch { justify-content:flex-start; text-align:left; }
+.switch span { flex:1; }
+
+/* Refs sub-menu: all six choices visible as a 3×2 grid */
+.libnav { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-bottom:14px; }
+.libnav a { display:flex; align-items:center; justify-content:center; gap:4px; min-height:40px; padding:6px 4px; border-radius:12px; background:var(--panel); border:1px solid var(--line); color:var(--text); text-decoration:none; font-size:13px; font-weight:600; text-align:center; }
+.libnav a.on { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+
+/* Browse header: back to Refs + search on one row */
+#search { display:flex; gap:8px; align-items:center; }
+#search .back { flex:none; }
+#search input { flex:1; min-width:0; }
+
+/* Viewer study tools: wrap into rows instead of running off screen */
+.r-tools { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; overflow:visible; }
+.r-tools button { min-width:0; }
+
+/* Session controls: icon + word */
+.o-ctrl button:not([data-c=next]) { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; min-width:54px; font-size:17px; line-height:1; padding:4px 6px; }
+.o-ctrl button span { font-size:10.5px; color:var(--muted); }
+.o-ctrl [data-c=next] { min-height:50px; }
+
+/* Discover back button */
+a.f-pill { display:inline-flex; align-items:center; text-decoration:none; }
+
+/* Board picker suggestions */
+.sheet .chips.mini { margin-top:10px; }
+.sheet .chips.mini button { min-height:34px; }
