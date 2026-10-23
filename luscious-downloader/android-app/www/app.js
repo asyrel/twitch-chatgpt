@@ -535,7 +535,7 @@ async function renderSettings() {
     <div class="box">
       <h3>Show these (hidden by default)</h3>
       ${Object.entries(HIDE_RULES).map(([k, r]) => `<label class="switch"><input type="checkbox" data-show="${k}" ${p.show[k] ? 'checked' : ''}><span>${r.label}</span></label>`).join('')}
-      <label class="switch"><input type="checkbox" id="realRefs" ${p.realRefs ? 'checked' : ''}><span>Real photo references<br><span class="muted small">luscious real-photo albums, only in Find and Observe (never in Browse)</span></span></label>
+      <label class="switch"><input type="checkbox" id="realRefs" ${p.realRefs ? 'checked' : ''}><span>Real photo references<br><span class="muted small">photos from RedGIFs (luscious real albums as backup), only in Find and Observe, never in Browse</span></span></label>
       <p class="muted small">Anything involving minors is always blocked on every site.</p>
       <label style="margin-top:12px">Also hide albums with these tags (comma separated)</label>
       <input id="hideTags" value="${esc(p.hideTags.join(', '))}" placeholder="e.g. guro, scat">

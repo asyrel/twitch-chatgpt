@@ -4,7 +4,8 @@ import { $, app, esc, store, imgTag, toast } from './util.js';
 import { addToBoard } from './boards.js';
 import * as B from './boorus.js';
 import { openPosts, postHidden } from './art.js';
-import { realAllowed } from './photos.js';
+import { realAllowed, photoAllowed } from './photos.js';
+import * as RG from './redgifs.js';
 
 // label -> luscious search term
 export const REF_GROUPS = {
@@ -50,7 +51,7 @@ export async function renderRefResults(sec, term, label, ctx) {
   const head = `${ctx.libraryNav('refs')}<div class="row" style="margin-top:0;justify-content:space-between"><h2 style="margin:0">🔎 ${title}</h2><a class="btn" href="#/refs">All categories</a></div>`;
   app.innerHTML = head + '<div class="center"><div class="spinner"></div></div>';
   if (sec === 'art') return artGrid(term, title, head, ctx);
-  if (sec === 'real') return albumStrips('real', term, head, ctx);
+  if (sec === 'real') return photoGrid(term, title, head, ctx);
   let pics = null;
   try { pics = await L.searchPictures(term, 1); } catch { pics = null; }
   if (pics && pics.items.length) return pictureGrid(sec, term, title, head, pics, ctx);
@@ -166,5 +167,34 @@ async function artGrid(term, title, head, ctx) {
   };
   if (!sites.length) return ctx.showError(new Error('No art sites are turned on (⚙ Settings → Art sites).'));
   try { await load(); } catch (e) { return ctx.showError(e); }
+  draw();
+}
+
+// Real photos: single photos from RedGIFs; falls back to luscious real albums if RedGIFs can't be reached.
+async function photoGrid(term, title, head, ctx) {
+  const items = [];
+  let page = 0, more = true;
+  const load = async () => {
+    let added = 0;
+    for (let tries = 0; tries < 3 && more && added < 20; tries++) {
+      const r = await RG.searchPhotos(term, ++page, 'top');
+      more = r.more && r.items.length > 0;
+      for (const x of r.items) if (photoAllowed(x, ctx) && !items.some((y) => y.key === x.key)) { items.push(x); added++; }
+    }
+  };
+  const open = (i) => ctx.openReader({
+    title: `Refs: ${title}`, start: i, mode: 'ltr',
+    pages: items.map((x) => ({ src: x.src, fallback: x.fallback, fallback2: x.thumb })),
+    onAddToBoard: (k) => { const { album, picture } = RG.asAlbumPicture(items[k]); return addToBoard(album, picture, 0, ctx); },
+  });
+  const draw = () => {
+    app.innerHTML = `${head}<p class="muted small">Real photos tagged <b>${esc(RG.rgTag(term))}</b>. Tap to study, then ＋ Board to keep it.</p>
+      ${items.length ? `<div class="grid thumbs">${items.map((x, i) => `<div class="thumb" data-i="${i}">${imgTag(x.thumb)}</div>`).join('')}</div>` : '<p class="muted">Nothing found. Try another word.</p>'}
+      ${more ? '<div class="center"><button id="moreR">Load more</button></div>' : ''}`;
+    app.querySelectorAll('.thumb').forEach((t) => (t.onclick = () => open(+t.dataset.i)));
+    $('#moreR')?.addEventListener('click', async (e) => { e.target.disabled = true; e.target.textContent = 'Loading…'; await load(); draw(); });
+  };
+  try { await load(); } catch { return albumStrips('real', term, head, ctx); }
+  if (!items.length) return albumStrips('real', term, head, ctx);
   draw();
 }

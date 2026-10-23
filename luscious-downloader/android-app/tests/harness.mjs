@@ -47,6 +47,7 @@ export async function newPage(env, { onboarded = true, storage = {} } = {}) {
     const u = new URL(url);
     let target = url;
     if (/(^|\.)luscious\.net$/.test(u.hostname)) target = `http://127.0.0.1:${PORTS.luscious}${u.pathname}${u.search}`;
+    else if (u.hostname === 'api.redgifs.com') target = `http://127.0.0.1:${PORTS.booru}${u.pathname}${u.search}`;
     else if (BOORU_HOSTS[u.hostname]) target = `http://127.0.0.1:${PORTS.booru}/api?site=${BOORU_HOSTS[u.hostname]}&${u.search.slice(1)}`;
     const h = { ...headers };
     const cookie = Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; ');
