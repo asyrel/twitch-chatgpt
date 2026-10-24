@@ -137,7 +137,7 @@ function sortBar(sec, q, current) {
 }
 document.addEventListener('click', (e) => {
   const a = e.target.closest('.sortbar a[data-sort]');
-  if (!a) return;
+  if (!a || a.closest('.artsort')) return;
   store.set('ldl_sort', a.dataset.sort);
   const d = L.describeSort(a.dataset.sort);
   if (d.period) store.set('ldl_period', d.period);
@@ -202,6 +202,8 @@ function renderSection(sec, q, sort) {
   $('#q').placeholder = SECTIONS[sec].placeholder;
   $('#q').value = q;
   if (!sort && !q) sort = store.get('ldl_sort', '') || '';
+  // Ignore a remembered sort the site doesn't offer (e.g. one saved by an older version).
+  if (sort && !L.SORT_CANDIDATES.includes(sort) && !sortValues.includes(sort)) { sort = ''; store.set('ldl_sort', ''); }
   renderList({
     section: sec,
     title: q ? `${SECTIONS[sec].title}: “${esc(q)}”` : SECTIONS[sec].title,

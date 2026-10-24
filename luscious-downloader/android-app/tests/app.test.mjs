@@ -299,3 +299,17 @@ test('updater: Settings shows the new build, its changes, and installs it', asyn
   assert.match(url, /miwaku-latest\/Miwaku\.apk$/);
   noErrors(p);
 });
+
+test('Art "Top rated" sort does not break the Hentai list', async () => {
+  const p = await newPage(env, { storage: { ldl_sort: 'top' } });
+  await p.goto(env.url + '#/hentai');
+  await p.waitForSelector('.card', { timeout: 15000 });
+  assert.equal(await p.$('.err'), null);
+  await p.goto(env.url + '#/art');
+  await p.waitForSelector('.artsort [data-sort=top]', { timeout: 15000 });
+  await p.click('.artsort [data-sort=top]');
+  await p.goto(env.url + '#/hentai');
+  await p.waitForSelector('.card', { timeout: 15000 });
+  assert.equal(await p.$('.err'), null);
+  noErrors(p);
+});

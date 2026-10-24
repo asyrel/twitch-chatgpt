@@ -251,7 +251,7 @@ export function contentKind(album) {
 
 // ---------- sort options ----------
 // Known/likely values for AlbumListInput.display. The real list is read from the API when possible.
-const SORT_CANDIDATES = [
+export const SORT_CANDIDATES = [
   'date_trending', 'date_newest', 'date_last_interaction',
   'rating_7_days', 'rating_14_days', 'rating_30_days', 'rating_90_days', 'rating_365_days', 'rating_all_time',
   'view_count_7_days', 'view_count_14_days', 'view_count_30_days', 'view_count_90_days', 'view_count_365_days', 'view_count_all_time',
@@ -316,7 +316,7 @@ export function getSortOptions() {
 // section: 'hentai' | 'real' | 'manga' | null (everything)
 export async function listAlbums({ section = null, q = '', sort = '', page = 1, creatorId = null } = {}) {
   q = String(q || '').trim();
-  const display = /^[a-z0-9_]+$/.test(sort || '') ? sort : q ? 'search_score' : 'date_trending';
+  const display = /^[a-z]+_[a-z0-9_]+$/.test(sort || '') ? sort : q ? 'search_score' : 'date_trending';
   const filters = [{ name: 'album_type', value: section === 'manga' ? 'manga' : 'pictures' }];
   if (!section) filters.length = 0;
   if (section === 'hentai' || section === 'real') {

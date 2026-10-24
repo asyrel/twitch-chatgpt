@@ -31,7 +31,7 @@ export function renderArt(q, site, sort, ctx) {
 
   const draw = () => {
     app.innerHTML = `${ctx.libraryNav('browse')}
-      <div class="sortbar">
+      <div class="sortbar artsort">
         <div class="chips">${['all', ...enabled].map((s) => `<a class="chip ${s === site ? 'on' : ''}" data-site="${s}" href="${href(s, sort)}">${s === 'all' ? 'All sites' : esc(B.SITES[s].name)}</a>`).join('')}</div>
         <div class="chips small-chips">${[['new', 'Newest'], ['top', 'Top rated']].map(([k, v]) => `<a class="chip ${k === sort ? 'on' : ''}" data-sort="${k}" href="${href(site, k)}">${v}</a>`).join('')}</div>
       </div>
