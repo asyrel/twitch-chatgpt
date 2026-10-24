@@ -26,6 +26,10 @@ export function startBooru(port) {
   const server = http.createServer((req, res) => {
     const u = new URL(req.url, base);
     if (u.pathname.startsWith('/img/')) { res.writeHead(200, { 'content-type': 'image/png' }); return res.end(PNG); }
+    if (u.pathname === '/gh/repos/asyrel/twitch-chatgpt/releases/tags/miwaku-latest') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ name: 'Miwaku for Android (build 25)', body: 'Latest build.\n\n### Recent changes\n- Real photos: women only by default\n- In-app updater', assets: [{ name: 'Miwaku.apk', browser_download_url: 'https://github.com/asyrel/twitch-chatgpt/releases/download/miwaku-latest/Miwaku.apk' }] }));
+    }
     if (u.pathname === '/v2/auth/temporary') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ token: 'tok123' })); }
     if (u.pathname === '/v2/gifs/search') {
       hits.push({ site: 'redgifs', tags: u.searchParams.get('tags') || '', auth: req.headers.authorization || '' });
@@ -34,7 +38,7 @@ export function startBooru(port) {
       const img = `${base}/img/rg.png`;
       const gifs = pg > 2 ? [] : Array.from({ length: 6 }, (_, i) => {
         const id = `photo${pg}x${i}`;
-        const tags = i === 0 ? ['Teen', 'Boobs'] : i === 1 ? ['Big Tits'] : i === 2 ? ['Ass', 'Gay'] : ['Boobs', 'Amateur'];
+        const tags = i === 0 ? ['Teen', 'Boobs'] : i === 1 ? ['Big Tits'] : i === 2 ? ['Ass', 'Gay'] : i === 4 ? ['Cock', 'Solo Male'] : ['Boobs', 'Amateur'];
         const small = i === 3;
         return { id, type: 2, width: small ? 300 : 1080, height: small ? 400 : 1920, tags, userName: 'user' + i, urls: { hd: img + '?' + id, sd: img + '?sd' + id, thumbnail: img + '?t' + id } };
       });

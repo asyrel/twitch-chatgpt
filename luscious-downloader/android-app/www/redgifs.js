@@ -22,7 +22,7 @@ const TAG_FOR = {
   breasts: 'Boobs', 'small breasts': 'Small Tits', 'big breasts': 'Big Tits', 'huge breasts': 'Huge Tits', nipples: 'Nipples',
   'puffy nipples': 'Puffy Nipples', areolae: 'Big Areolas', ass: 'Ass', 'big ass': 'Big Ass', anus: 'Asshole', pussy: 'Pussy',
   'spread pussy': 'Spread Pussy', 'shaved pussy': 'Shaved Pussy', 'pubic hair': 'Hairy Pussy', penis: 'Cock', 'big penis': 'Big Dick',
-  testicles: 'Balls', 'all fours': 'Doggystyle', 'from behind': 'From Behind', 'bent over': 'Bent Over', 'legs up': 'Legs Up',
+  testicles: 'Balls', 'all fours': 'All Fours', 'from behind': 'From Behind', 'bent over': 'Bent Over', 'legs up': 'Legs Up',
   'spread legs': 'Spread Legs', stockings: 'Stockings', 'high heels': 'Heels', lingerie: 'Lingerie', bikini: 'Bikini',
   thighs: 'Thighs', feet: 'Feet', milf: 'MILF', 'thick': 'Thick', curvy: 'Curvy', petite: 'Petite', muscle: 'Muscular Girl',
   pov: 'POV', cosplay: 'Cosplay', 'tan lines': 'Tan Lines', 'wet': 'Wet', oiled: 'Oiled',

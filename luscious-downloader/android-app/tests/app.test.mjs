@@ -262,7 +262,7 @@ test('real photo refs: only in Find/Observe, never in Browse, minors still block
   await p.waitForSelector('.grid.thumbs .thumb', { timeout: 20000 });
   const srcs = await p.$$eval('.grid.thumbs .thumb img', (r) => r.map((x) => x.getAttribute('src') || ''));
   assert.ok(srcs.length >= 4, 'Find → Real photos shows a RedGIFs photo grid');
-  assert.ok(srcs.every((s) => !/photo\dx[023]\b/.test(s)), 'Teen-tagged, gay and tiny photos are hidden');
+  assert.ok(srcs.every((s) => !/photo\dx[0234]\b/.test(s)), 'Teen-tagged, gay, male and tiny photos are hidden');
   const hit = env.booruHits.find((h) => h.site === 'redgifs');
   assert.ok(hit && hit.auth === 'Bearer tok123', 'uses the temporary token');
   await p.click('.grid.thumbs .thumb');
@@ -282,4 +282,20 @@ test('turning off real photo refs removes the source', async () => {
   await p.waitForSelector('#src');
   const opts = await p.$$eval('#src option', (o) => o.map((x) => x.value));
   assert.ok(!opts.includes('real'));
+});
+
+test('updater: Settings shows the new build, its changes, and installs it', async () => {
+  const p = await newPage(env);
+  await p.goto(env.url + '#/settings');
+  await p.waitForSelector('#updGo', { timeout: 10000 });
+  const box = await text(p, '#updBox');
+  assert.match(box, /build 20/);
+  assert.match(box, /build 25/);
+  assert.match(box, /In-app updater/);
+  assert.ok(await p.$('[data-tab=settings].dot'), 'Settings tab shows a dot');
+  await p.click('#updGo');
+  await p.waitForFunction(() => window.__calls.some((c) => c[0] === 'installUpdate'));
+  const url = await p.evaluate(() => window.__calls.find((c) => c[0] === 'installUpdate')[1].url);
+  assert.match(url, /miwaku-latest\/Miwaku\.apk$/);
+  noErrors(p);
 });

@@ -598,6 +598,77 @@ public class LdlStoragePlugin extends Plugin {
         });
     }
 
+    /**
+     * Downloads a new version of the app and opens Android's installer for it.
+     * If "Install unknown apps" isn't allowed yet, opens that settings screen and rejects with "permission".
+     */
+    @PluginMethod
+    public void installUpdate(PluginCall call) {
+        String url = call.getString("url");
+        if (url == null || !url.startsWith("https://")) { call.reject("Bad update link"); return; }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                && !getContext().getPackageManager().canRequestPackageInstalls()) {
+            Intent s = new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:" + getContext().getPackageName()));
+            s.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(s);
+            call.reject("permission needed", "permission");
+            return;
+        }
+        new Thread(() -> {
+            java.io.File dir = new java.io.File(getContext().getCacheDir(), "update");
+            dir.mkdirs();
+            java.io.File apk = new java.io.File(dir, "Miwaku.apk");
+            try {
+                String next = url;
+                java.net.HttpURLConnection c = null;
+                for (int hop = 0; hop < 6; hop++) {
+                    c = (java.net.HttpURLConnection) new java.net.URL(next).openConnection();
+                    c.setInstanceFollowRedirects(false);
+                    c.setConnectTimeout(20000);
+                    c.setReadTimeout(60000);
+                    c.setRequestProperty("User-Agent", "Miwaku-updater");
+                    int code = c.getResponseCode();
+                    if (code >= 300 && code < 400 && c.getHeaderField("Location") != null) {
+                        next = new java.net.URL(new java.net.URL(next), c.getHeaderField("Location")).toString();
+                        c.disconnect();
+                        continue;
+                    }
+                    if (code != 200) throw new java.io.IOException("HTTP " + code);
+                    break;
+                }
+                long total = c.getContentLengthLong();
+                long done = 0, lastSent = 0;
+                try (java.io.InputStream in = c.getInputStream(); java.io.OutputStream out = new java.io.FileOutputStream(apk)) {
+                    byte[] buf = new byte[64 * 1024];
+                    int n;
+                    while ((n = in.read(buf)) > 0) {
+                        out.write(buf, 0, n);
+                        done += n;
+                        if (done - lastSent > 256 * 1024) {
+                            lastSent = done;
+                            JSObject p = new JSObject();
+                            p.put("done", done);
+                            p.put("total", total);
+                            notifyListeners("updateProgress", p);
+                        }
+                    }
+                }
+                c.disconnect();
+                if (total > 0 && done != total) throw new java.io.IOException("Download was cut off");
+                Uri uri = androidx.core.content.FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", apk);
+                Intent i = new Intent(Intent.ACTION_VIEW);
+                i.setDataAndType(uri, "application/vnd.android.package-archive");
+                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(i);
+                call.resolve();
+            } catch (Exception e) {
+                apk.delete();
+                call.reject(e.getMessage() == null ? "Download failed" : e.getMessage());
+            }
+        }).start();
+    }
+
     /** Opens luscious.net in a browser screen so the user can pass its bot check. */
     @PluginMethod
     public void openVerify(PluginCall call) {

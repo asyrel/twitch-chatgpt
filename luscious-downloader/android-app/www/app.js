@@ -1,5 +1,6 @@
 import * as L from './api.js';
 import * as N from './native.js';
+import * as U from './update.js';
 import { openReader, closeReader, readerOpen, readerPrefs, saveReaderPrefs, MODES } from './reader.js';
 import { $, app, esc, store, loading, imgTag, fmtBytes } from './util.js';
 import { renderBoards, renderBoard, addToBoard } from './boards.js';
@@ -37,7 +38,7 @@ const HIDE_RULES = {
   futa: { label: 'Futa', re: /futa|futanari|dickgirl/i },
   furry: { label: 'Furry', re: /furr(y|ies)|anthro|yiff/i },
 };
-const prefs = () => ({ show: { gay: false, futa: false, furry: false }, hideTags: [], mangaMode: 'rtl', compression: 'lossless', realRefs: true, ...store.get('ldl_prefs', {}) });
+const prefs = () => ({ show: { gay: false, futa: false, furry: false }, hideTags: [], mangaMode: 'rtl', compression: 'lossless', realRefs: true, realMen: false, ...store.get('ldl_prefs', {}) });
 const setPrefs = (p) => store.set('ldl_prefs', p);
 
 // Always blocked, on every site, and not adjustable: anything involving minors.
@@ -502,6 +503,7 @@ async function renderSettings() {
   const vols = await N.getVolumes().catch(() => []);
   app.innerHTML = `<h2>Settings</h2>
     <div class="row" style="margin-top:0"><a class="btn primary checkbtn" href="#/check">🩺 Connection check</a><a class="btn checkbtn" href="#/help">❓ Help & tips</a></div>
+    <div class="box" id="updBox"></div>
     <div class="box">
       <h3>Save downloads to</h3>
       ${N.hasNative ? `
@@ -536,6 +538,7 @@ async function renderSettings() {
       <h3>Show these (hidden by default)</h3>
       ${Object.entries(HIDE_RULES).map(([k, r]) => `<label class="switch"><input type="checkbox" data-show="${k}" ${p.show[k] ? 'checked' : ''}><span>${r.label}</span></label>`).join('')}
       <label class="switch"><input type="checkbox" id="realRefs" ${p.realRefs ? 'checked' : ''}><span>Real photo references<br><span class="muted small">photos from RedGIFs (luscious real albums as backup), only in Find and Observe, never in Browse</span></span></label>
+      <label class="switch"><input type="checkbox" id="realMen" ${p.realMen ? 'checked' : ''}><span>Include men in real photos<br><span class="muted small">off: only photos of women, nothing tagged with a man or penis</span></span></label>
       <p class="muted small">Anything involving minors is always blocked on every site.</p>
       <label style="margin-top:12px">Also hide albums with these tags (comma separated)</label>
       <input id="hideTags" value="${esc(p.hideTags.join(', '))}" placeholder="e.g. guro, scat">
@@ -579,6 +582,8 @@ async function renderSettings() {
     for (const [id, key] of [['dbU', 'danbooruUser'], ['dbK', 'danbooruKey'], ['gbU', 'gelbooruUser'], ['gbK', 'gelbooruKey']]) $('#' + id).onchange = (e) => bset((x) => { x[key] = e.target.value.trim(); });
   }
   app.querySelectorAll('[data-show]').forEach((c) => (c.onchange = () => { const x = prefs(); x.show[c.dataset.show] = c.checked; setPrefs(x); }));
+  U.renderUpdateBox($('#updBox'));
+  $('#realMen').onchange = (e) => { const x = prefs(); x.realMen = e.target.checked; setPrefs(x); };
   $('#realRefs').onchange = (e) => { const x = prefs(); x.realRefs = e.target.checked; setPrefs(x); };
   $('#hideTags').onchange = (e) => { const x = prefs(); x.hideTags = e.target.value.split(',').map((t) => t.trim()).filter(Boolean); setPrefs(x); };
   $('#mangaMode').onchange = (e) => { const x = prefs(); x.mangaMode = e.target.value; setPrefs(x); };
@@ -702,6 +707,7 @@ function route() {
   renderSection(SECTIONS[kind] ? kind : 'hentai', decodeURIComponent(a), b);
 }
 window.addEventListener('hashchange', route);
+setTimeout(() => U.checkInBackground(), 3000);
 L.getCategories().catch(() => {});
 route();
 setTimeout(refreshNewBadge, 4000);

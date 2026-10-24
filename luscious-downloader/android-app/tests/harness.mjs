@@ -15,6 +15,7 @@ const PORTS = { app: 4676, luscious: 4675, booru: 4680 };
 export async function startAll() {
   const app = http.createServer(async (req, res) => {
     const p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    if (p === '/build.json') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end('{"build": 20}'); }
     if (p.startsWith('/__file/')) { res.writeHead(200, { 'content-type': 'image/svg+xml' }); return res.end('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1150"><text y="500">LOCAL</text></svg>'); }
     try {
       const file = p === '/' ? 'index.html' : p;
@@ -47,6 +48,7 @@ export async function newPage(env, { onboarded = true, storage = {} } = {}) {
     const u = new URL(url);
     let target = url;
     if (/(^|\.)luscious\.net$/.test(u.hostname)) target = `http://127.0.0.1:${PORTS.luscious}${u.pathname}${u.search}`;
+    else if (u.hostname === 'api.github.com') target = `http://127.0.0.1:${PORTS.booru}/gh${u.pathname}`;
     else if (u.hostname === 'api.redgifs.com') target = `http://127.0.0.1:${PORTS.booru}${u.pathname}${u.search}`;
     else if (BOORU_HOSTS[u.hostname]) target = `http://127.0.0.1:${PORTS.booru}/api?site=${BOORU_HOSTS[u.hostname]}&${u.search.slice(1)}`;
     const h = { ...headers };
@@ -89,6 +91,7 @@ export async function newPage(env, { onboarded = true, storage = {} } = {}) {
           setBackgroundMode: async (o) => { window.__calls.push('bg:' + o.active); },
           cancel: async () => {},
           openVerify: async () => {},
+          installUpdate: async (a) => { window.__calls.push(['installUpdate', a]); },
           getCookieNames: async () => ({ names: await window.__cookieNames() }),
           clearCookies: async () => { await window.__clearCookies(); },
           async downloadAlbum({ target, folder, files, jobId }) {

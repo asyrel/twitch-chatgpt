@@ -49,3 +49,11 @@ if (P) {
 }
 
 export const fileSrc = (uri) => (Cap?.convertFileSrc ? Cap.convertFileSrc(uri) : uri);
+
+// Downloads the new APK and opens Android's installer. Rejects with 'permission' if
+// "Install unknown apps" still has to be allowed (the settings screen is opened for it).
+export async function installUpdate(url, onProgress) {
+  let handle = null;
+  if (P && onProgress) handle = await P.addListener('updateProgress', onProgress);
+  try { return await call('installUpdate', { url }); } finally { handle?.remove?.(); }
+}
