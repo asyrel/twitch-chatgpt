@@ -311,5 +311,10 @@ test('Art "Top rated" sort does not break the Hentai list', async () => {
   await p.goto(env.url + '#/hentai');
   await p.waitForSelector('.card', { timeout: 15000 });
   assert.equal(await p.$('.err'), null);
+  for (const h of ['#/manga', '#/manga//top']) {
+    await p.goto(env.url + h);
+    await p.waitForSelector('.card', { timeout: 15000 });
+    assert.equal(await p.$('.err'), null, h);
+  }
   noErrors(p);
 });
