@@ -318,3 +318,24 @@ test('Art "Top rated" sort does not break the Hentai list', async () => {
   }
   noErrors(p);
 });
+
+test('observe: Skip swaps the image; Not for me swaps it, remembers it and learns the tags', async () => {
+  const p = await newPage(env, { storage: DISCOVER });
+  await p.goto(env.url + '#/observe');
+  await p.click('[data-go=slow]');
+  await p.waitForSelector('.obs .o-title', { timeout: 20000 });
+  await p.click('[data-c=next]');
+  const src = () => p.$eval('.o-img', (i) => i.getAttribute('src'));
+  const first = await src();
+  await p.click('[data-s=skip]');
+  await p.waitForFunction((s) => document.querySelector('.o-img').getAttribute('src') !== s, first, { timeout: 15000 });
+  assert.equal(await text(p, '.o-title'), 'Just look', 'new image starts from the first step');
+  const second = await src();
+  await p.click('[data-s=dislike]');
+  await p.waitForFunction((s) => document.querySelector('.o-img').getAttribute('src') !== s, second, { timeout: 15000 });
+  const bad = await p.evaluate(() => JSON.parse(localStorage.ldl_obs_disliked));
+  assert.equal(bad.length, 1);
+  const taste = await p.evaluate(() => JSON.parse(localStorage.ldl_taste));
+  assert.ok(Object.values(taste.w).some((v) => v < 0), 'tags learned as disliked');
+  noErrors(p);
+});

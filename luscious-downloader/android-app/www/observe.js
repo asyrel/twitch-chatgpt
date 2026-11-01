@@ -7,6 +7,7 @@ import { loadBoards, boardItems, pagesFor, addToBoard } from './boards.js';
 import { postHidden } from './art.js';
 import { addEntry, updateEntry, stats, fmtMins, TYPES } from './journal.js';
 import { realRefs } from './photos.js';
+import * as T from './taste.js';
 
 // ---------- what to look for (standard observation practice) ----------
 const SLOW_STEPS = [
@@ -39,7 +40,29 @@ export const observePrefs = () => ({
 const savePrefs = (p) => store.set('ldl_observe', p);
 
 // ---------- reference pool ----------
-async function pickRefs(source, n, ctx) {
+// Images you marked "Not for me" never come back; images whose tags you keep disliking are skipped.
+const DISLIKED_KEY = 'ldl_obs_disliked';
+const dislikedKeys = () => new Set(store.get(DISLIKED_KEY, []));
+export function dislikeImage(im) {
+  const keys = store.get(DISLIKED_KEY, []);
+  if (im.key && !keys.includes(im.key)) { keys.push(im.key); store.set(DISLIKED_KEY, keys.slice(-5000)); }
+  if (im.tags?.length) { T.learn(im.tags, -1); T.nudge(im.tags, -1.5); }
+}
+const unwanted = (im, t) => im.tags?.length && (T.disliked(im.tags, t) || T.score(im.tags, t) < -1);
+
+async function pickRefs(source, n, ctx, exclude = new Set()) {
+  const bad = dislikedKeys();
+  const t = T.loadTaste();
+  const ok = (im) => !bad.has(im.key) && !exclude.has(im.key) && !unwanted(im, t);
+  let out = [];
+  for (let tries = 0; tries < 3 && out.length < n; tries++) {
+    const got = await rawPick(source, n + 4, ctx);
+    for (const im of got) if (out.length < n && ok(im) && !out.some((o) => o.key === im.key)) out.push(im);
+    if (!got.length || !source.match(/^(discover|real)$/)) break;
+  }
+  return out;
+}
+async function rawPick(source, n, ctx) {
   if (source === 'discover') return discover(observePrefs().tag, n, ctx);
   if (source === 'real') return realRefs(n, observePrefs().tag, ctx);
   const d = loadBoards();
@@ -62,7 +85,7 @@ async function discover(tag, n, ctx) {
       if (out.length >= n || seen.has(x.key) || postHidden(x, ctx)) continue;
       seen.add(x.key);
       const { album, picture } = B.asAlbumPicture(x);
-      out.push({ key: x.key, src: x.sample || x.original, fallback: x.original, thumb: x.thumb, title: album.title, album, picture });
+      out.push({ key: x.key, src: x.sample || x.original, fallback: x.original, thumb: x.thumb, title: album.title, album, picture, tags: x.tags });
     }
   }
   return out;
@@ -163,6 +186,10 @@ export function startObserve({ type, images, opts = {} }, ctx) {
     <div class="o-stage"><div class="o-wrap"><img class="o-img" alt="" referrerpolicy="no-referrer"><div class="o-grid"></div></div>
       <div class="o-hidden" hidden><div class="o-big">✍️</div><b>Draw from memory</b><span class="o-count"></span></div></div>
     <div class="o-top"><span class="o-prog"></span><span class="o-time"></span></div>
+    <div class="o-swap">
+      <button data-s="skip" aria-label="Skip this image">⏭<span>Skip</span></button>
+      <button data-s="dislike" aria-label="Not for me: show fewer like this">👎<span>Not for me</span></button>
+    </div>
     <div class="o-bar"><div></div></div>
     <div class="o-card">
       <div class="o-step"><b class="o-title"></b><p class="o-desc"></p></div>
@@ -263,6 +290,41 @@ export function startObserve({ type, images, opts = {} }, ctx) {
     if (st.secs > 0 && left <= 0) next();
   }, 1000);
 
+  // Skip / Not for me: swap in a new image from the same source (or move on if there are no more).
+  let swapping = false;
+  async function swap(dislike) {
+    if (swapping || ended) return;
+    swapping = true;
+    const i = steps[k].img;
+    if (dislike) { dislikeImage(images[i]); toast('Got it: fewer like this'); }
+    const was = paused; paused = true;
+    root.classList.add('swapping');
+    let fresh = null;
+    try { [fresh] = await pickRefs(opts.source || 'boards', 1, ctx, new Set(images.map((x) => x.key))); } catch {}
+    root.classList.remove('swapping');
+    paused = was;
+    swapping = false;
+    if (ended) return;
+    if (fresh) {
+      images[i] = fresh;
+      results[i] = { key: fresh.key, src: fresh.src, fallback: fresh.fallback, thumb: fresh.thumb, title: fresh.title };
+      shownImg = -1;
+      k = steps.findIndex((s) => s.img === i);
+      render();
+    } else {
+      results[i].skipped = true;
+      const nk = steps.findIndex((s) => s.img > i);
+      if (nk < 0) return finish();
+      if (!dislike) toast('No more images: moving on');
+      k = nk;
+      render();
+    }
+  }
+  root.querySelector('.o-swap').addEventListener('click', (e) => {
+    const s = e.target.closest('[data-s]')?.dataset.s;
+    if (s) swap(s === 'dislike');
+  });
+
   root.querySelectorAll('[data-aid]').forEach((b) => (b.onclick = () => {
     const a = b.dataset.aid;
     manualAids.has(a) ? manualAids.delete(a) : manualAids.add(a);
@@ -307,10 +369,11 @@ export function startObserve({ type, images, opts = {} }, ctx) {
     window.removeEventListener('popstate', onPop);
     N.onVolumeKey(null);
     N.setReading(false);
-    const rated = results.filter((r) => r.rating);
+    const kept = results.filter((r) => !r.skipped);
+    const rated = kept.filter((r) => r.rating);
     const entry = addEntry({
       type, seconds: elapsed, opts, notes,
-      images: results.map((r, i) => ({ ...r, ...(images[i].album ? {} : {}) })),
+      images: kept,
       avgRating: rated.length ? Math.round((rated.reduce((s, r) => s + r.rating, 0) / rated.length) * 10) / 10 : null,
     });
     root.querySelector('.o-card').innerHTML = `<div class="o-step"><b>Session done · ${fmtMins(elapsed)}</b>

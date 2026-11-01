@@ -407,3 +407,9 @@ a.f-pill { display:inline-flex; align-items:center; text-decoration:none; }
 /* Board picker suggestions */
 .sheet .chips.mini { margin-top:10px; }
 .sheet .chips.mini button { min-height:34px; }
+
+/* Skip / Not for me, on the image in an observation session */
+.o-swap { position:absolute; top:calc(var(--st) + 44px); right:10px; display:flex; flex-direction:column; gap:8px; z-index:2; }
+.o-swap button { width:58px; min-height:52px; padding:5px 2px; border-radius:14px; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.18); color:#fff; font-size:18px; display:flex; flex-direction:column; align-items:center; gap:2px; line-height:1; }
+.o-swap button span { font-size:10px; color:#ddd; }
+.obs.swapping .o-wrap { opacity:.35; transition:opacity .2s; }
