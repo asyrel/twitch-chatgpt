@@ -36,11 +36,12 @@ export function startBooru(port) {
       if (req.headers.authorization !== 'Bearer tok123') { res.writeHead(401); return res.end('{}'); }
       const pg = +u.searchParams.get('page') || 1;
       const img = `${base}/img/rg.png`;
-      const gifs = pg > 2 ? [] : Array.from({ length: 6 }, (_, i) => {
+      const gifs = pg > 2 ? [] : Array.from({ length: 8 }, (_, i) => {
         const id = `photo${pg}x${i}`;
-        const tags = i === 0 ? ['Teen', 'Boobs'] : i === 1 ? ['Big Tits'] : i === 2 ? ['Ass', 'Gay'] : i === 4 ? ['Cock', 'Solo Male'] : ['Boobs', 'Amateur'];
+        const tags = i === 0 ? ['Teen', 'Boobs'] : i === 1 ? ['Big Tits'] : i === 2 ? ['Ass', 'Gay'] : i === 4 ? ['Cock', 'Solo Male'] : i === 6 ? ['Boobs', 'Amateur'] : ['Boobs', 'Lingerie'];
+        const likes = i === 7 ? 20 : 5000;
         const small = i === 3;
-        return { id, type: 2, width: small ? 300 : 1080, height: small ? 400 : 1920, tags, userName: 'user' + i, urls: { hd: img + '?' + id, sd: img + '?sd' + id, thumbnail: img + '?t' + id } };
+        return { id, type: 2, width: small ? 300 : 1080, height: small ? 400 : 1920, tags, likes, verified: i !== 7, userName: 'user' + i, urls: { hd: img + '?' + id, sd: img + '?sd' + id, thumbnail: img + '?t' + id } };
       });
       res.writeHead(200, { 'content-type': 'application/json' });
       return res.end(JSON.stringify({ gifs, pages: 2, total: 12 }));

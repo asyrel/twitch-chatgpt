@@ -524,7 +524,7 @@ async function renderSettings() {
     <div class="box">
       <h3>Art sites</h3>
       ${Object.entries(B.SITES).map(([k, v]) => `<label class="switch"><input type="checkbox" data-site="${k}" ${B.booruPrefs().enabled[k] ? 'checked' : ''}><span>${v.name}</span></label>`).join('')}
-      <label style="margin-top:8px">Quality</label>
+      <label style="margin-top:8px">Quality <span class="muted small">(art sites and real photos)</span></label>
       <select id="bQuality">${Object.entries(B.QUALITY).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
       <label style="margin-top:8px">Content</label>
       <select id="bRatings"><option value="nsfw">NSFW (explicit + questionable)</option><option value="explicit">Explicit only</option></select>

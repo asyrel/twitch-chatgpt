@@ -45,7 +45,7 @@ export async function searchPhotos(term, page = 1, order = 'top') {
   const items = (j?.gifs || []).filter((g) => g && g.urls && (g.urls.hd || g.urls.sd)).map((g) => ({
     key: `rg:${g.id}`, id: String(g.id), tags: (g.tags || []).map(String), user: g.userName || '',
     src: g.urls.hd || g.urls.sd, fallback: g.urls.sd, thumb: g.urls.thumbnail || g.urls.poster || g.urls.sd,
-    width: g.width || 0, height: g.height || 0, pageUrl: `https://www.redgifs.com/watch/${g.id}`,
+    width: g.width || 0, height: g.height || 0, likes: +g.likes || 0, views: +g.views || 0, verified: !!g.verified, pageUrl: `https://www.redgifs.com/watch/${g.id}`,
   }));
   return { items, more: page < (j?.pages || 1) };
 }

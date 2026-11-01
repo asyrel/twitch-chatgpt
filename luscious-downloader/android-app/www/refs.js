@@ -176,7 +176,7 @@ async function photoGrid(term, title, head, ctx) {
   let page = 0, more = true;
   const load = async () => {
     let added = 0;
-    for (let tries = 0; tries < 3 && more && added < 20; tries++) {
+    for (let tries = 0; tries < 5 && more && added < 20; tries++) {
       const r = await RG.searchPhotos(term, ++page, 'top');
       more = r.more && r.items.length > 0;
       for (const x of r.items) if (photoAllowed(x, ctx) && !items.some((y) => y.key === x.key)) { items.push(x); added++; }
@@ -189,12 +189,11 @@ async function photoGrid(term, title, head, ctx) {
   });
   const draw = () => {
     app.innerHTML = `${head}<p class="muted small">Real photos tagged <b>${esc(RG.rgTag(term))}</b>. Tap to study, then ＋ Board to keep it.</p>
-      ${items.length ? `<div class="grid thumbs">${items.map((x, i) => `<div class="thumb" data-i="${i}">${imgTag(x.thumb)}</div>`).join('')}</div>` : '<p class="muted">Nothing found. Try another word.</p>'}
+      ${items.length ? `<div class="grid thumbs">${items.map((x, i) => `<div class="thumb" data-i="${i}">${imgTag(x.thumb)}</div>`).join('')}</div>` : '<p class="muted">Nothing good enough found. Try another word, or set Quality to Any in Settings.</p>'}
       ${more ? '<div class="center"><button id="moreR">Load more</button></div>' : ''}`;
     app.querySelectorAll('.thumb').forEach((t) => (t.onclick = () => open(+t.dataset.i)));
     $('#moreR')?.addEventListener('click', async (e) => { e.target.disabled = true; e.target.textContent = 'Loading…'; await load(); draw(); });
   };
   try { await load(); } catch { return albumStrips('real', term, head, ctx); }
-  if (!items.length) return albumStrips('real', term, head, ctx);
   draw();
 }

@@ -262,7 +262,7 @@ test('real photo refs: only in Find/Observe, never in Browse, minors still block
   await p.waitForSelector('.grid.thumbs .thumb', { timeout: 20000 });
   const srcs = await p.$$eval('.grid.thumbs .thumb img', (r) => r.map((x) => x.getAttribute('src') || ''));
   assert.ok(srcs.length >= 4, 'Find → Real photos shows a RedGIFs photo grid');
-  assert.ok(srcs.every((s) => !/photo\dx[0234]\b/.test(s)), 'Teen-tagged, gay, male and tiny photos are hidden');
+  assert.ok(srcs.every((s) => !/photo\dx[023467]\b/.test(s)), 'Teen-tagged, gay, male, tiny, amateur and low-rated photos are hidden');
   const hit = env.booruHits.find((h) => h.site === 'redgifs');
   assert.ok(hit && hit.auth === 'Bearer tok123', 'uses the temporary token');
   await p.click('.grid.thumbs .thumb');
