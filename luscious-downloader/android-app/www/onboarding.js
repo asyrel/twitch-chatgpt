@@ -87,7 +87,7 @@ export function renderHelp() {
     ${tip('Searching the art sites', 'They use exact tags with underscores, e.g. thighhighs, from_behind, long_hair. Danbooru allows 2 tags at a time unless you add your free API key in Settings → Art sites.')}
     ${tip('Gesture practice', 'Library → Boards → Gesture practice. Pick a board or random art, a time per image and a count. Volume keys skip.')}
     ${tip('Something isn\'t loading', 'Run Settings → Connection check and share the report. If luscious.net shows a bot check, use the “Verify on luscious.net” button on the error.')}
-    ${tip('Hiding things', 'Settings → Show these: gay, futa and furry are hidden unless you turn them on, and you can add tags to hide. In For You, ⋯ → tap a tag → “Never show this”.')}
+    ${tip('Hiding things', 'Settings → Show these: gay, futa, furry, trans and (in single images) men &amp; penises are hidden unless you turn them on, and you can add tags to hide. In For You, ⋯ → tap a tag → “Never show this”.')}
     ${tip('Privacy', 'Everything (your taste, boards, notes) stays on your phone. It isn\'t backed up to Google. Downloads are hidden from the Gallery.')}
     <p class="muted small center">Miwaku · 18+ only</p>`;
 }

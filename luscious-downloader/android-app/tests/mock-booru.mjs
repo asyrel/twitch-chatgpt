@@ -15,7 +15,8 @@ export function startBooru(port) {
       const rating = i === 9 ? 'g' : i % 2 ? 'e' : 'q';
       const img = `${base}/img/${site}_${id}.${i === 8 ? 'mp4' : 'png'}`;
       // 10–12: planted low-quality posts (AI image, very low score, tiny image)
-      const tags = i === 10 ? 'ai-generated smile' : i >= 11 ? 'smile' : SPECIAL[i % 6];
+      // 6–7: a post with a penis and a trap post (hidden by default)
+      const tags = i === 10 ? 'ai-generated smile' : i >= 11 ? 'smile' : i === 6 ? 'penis 1boy smile' : i === 7 ? 'trap smile' : SPECIAL[i % 6];
       const score = i === 11 ? 1 : 100 - i;
       const w = i === 12 ? 300 : 800, h = i === 12 ? 400 : 1200;
       if (site === 'danbooru') out.push({ id, file_url: img, large_file_url: img, preview_file_url: img, tag_string: tags, tag_string_artist: 'artist_' + (i % 3), rating: i >= 10 ? 'e' : rating, image_width: w, image_height: h, score });

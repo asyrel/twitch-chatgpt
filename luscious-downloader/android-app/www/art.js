@@ -5,7 +5,7 @@ import { addToBoard } from './boards.js';
 import { showSimilar } from './similar.js';
 
 // Hidden-category / blocked / real-photo check on a post's tags.
-export const postHidden = (x, ctx) => !!ctx.hiddenReason({ audiences: [], genres: [], tags: x.tags.map((t) => t.replace(/_/g, ' ')).concat(x.tags) });
+export const postHidden = (x, ctx) => !!ctx.hiddenReason({ audiences: [], genres: [], tags: x.tags.map((t) => t.replace(/_/g, ' ')).concat(x.tags) }, undefined, { images: true });
 
 export function openPosts(items, start, title, ctx) {
   ctx.openReader({

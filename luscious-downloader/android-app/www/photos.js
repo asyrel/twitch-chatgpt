@@ -7,10 +7,10 @@ import { shuffle } from './util.js';
 import { booruPrefs } from './boorus.js';
 
 export const realAllowed = (album, ctx) => L.contentKind(album) === 'real' && !ctx.hiddenReason(album, undefined, { allowReal: true })
-  && (ctx.prefs().realMen || ![...(album.tags || []), album.title || ''].some((t) => /\b(male|males|men|man|guy|guys|penis|cock|dick|gay|blowjob|handjob|cumshot)\b/i.test(String(t))));
+  && (ctx.prefs().show.men || ![...(album.tags || []), album.title || ''].some((t) => /\b(male|males|men|man|guy|guys|penis|cock|dick|gay|blowjob|handjob|cumshot)\b/i.test(String(t))));
 
 // Photos showing men or a penis (hidden unless "Include men" is on in Settings).
-const MALE = /^(cock|cocks|dick|dicks|big_dick|big_cock|huge_cock|huge_dick|penis|balls|male|males|men|man|guy|guys|boy|boys|dude|gay|twink|bulge|jerk|jerking|jerk_off|jerking_off|jerkoff|stroking|handjob|blowjob|bj|deepthroat|cumshot|facial|cum|creampie|bbc|bwc|hung|daddy|dilf|solo_male|male_masturbation|sex|fucking|couple|couples|threesome|gangbang|penetration|doggystyle|missionary|cowgirl|reverse_cowgirl|riding|pov_sex|anal|dp)$/i;
+const MALE = /^(cock|cocks|dick|dicks|big_dick|big_cock|huge_cock|huge_dick|penis|balls|male|males|men|man|guy|guys|boy|boys|dude|gay|twink|bulge|jerk|jerking|jerk_off|jerking_off|jerkoff|stroking|handjob|blowjob|bj|deepthroat|cumshot|facial|cum|creampie|bbc|bwc|hung|trans|transgender|shemale|tgirl|ts|ladyboy|femboy|trap|sissy|crossdresser|daddy|dilf|solo_male|male_masturbation|sex|fucking|couple|couples|threesome|gangbang|penetration|doggystyle|missionary|cowgirl|reverse_cowgirl|riding|pov_sex|anal|dp)$/i;
 // Signs the photo is of a woman (required when men are hidden, since tags can be incomplete).
 const FEMALE = /^(girl|girls|woman|women|female|females|babe|wife|milf|lesbian|boobs|tits|big_tits|small_tits|natural_tits|titties|breasts|nipples|pussy|spread_pussy|shaved_pussy|hairy_pussy|ass|big_ass|booty|butt|pawg|thick|curvy|petite|bbw|lingerie|stockings|bikini|panties|thong|nude|naked|legs|thighs|feet|latina|asian|ebony|blonde|brunette|redhead|goth|alt_girl|solo|solo_female|bent_over|all_fours|from_behind|spreading|legs_up|tattoo|pierced_nipples|fit|fitness|yoga_pants|mature|cosplay)$/i;
 const norm = (t) => String(t).trim().replace(/[\s-]+/g, '_');
@@ -33,8 +33,8 @@ export function photoGoodEnough(x, q = booruPrefs().quality) {
 }
 
 // Blocked/hidden check for a RedGIFs photo (minor block, hidden categories, men, your hidden tags, quality).
-export const photoAllowed = (x, ctx) => !ctx.hiddenReason({ audiences: [], genres: [], tags: x.tags }, undefined, { allowReal: true })
-  && (ctx.prefs().realMen || (!showsMen(x.tags) && looksFemale(x.tags)))
+export const photoAllowed = (x, ctx) => !ctx.hiddenReason({ audiences: [], genres: [], tags: x.tags }, undefined, { allowReal: true, images: true })
+  && (ctx.prefs().show.men || (!showsMen(x.tags) && looksFemale(x.tags)))
   && (Math.min(x.width || 0, x.height || 0) === 0 || Math.min(x.width, x.height) >= 600)
   && photoGoodEnough(x);
 

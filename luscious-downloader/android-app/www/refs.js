@@ -43,7 +43,7 @@ function remember(term) {
   store.set('ldl_ref_recent', r);
 }
 // Hide pictures whose own tags hit the user's hidden categories.
-const pictureHidden = (p, ctx) => !!ctx.hiddenReason({ audiences: [], genres: [], tags: p.tags || [] });
+const pictureHidden = (p, ctx) => !!ctx.hiddenReason({ audiences: [], genres: [], tags: p.tags || [] }, undefined, { images: true });
 
 export async function renderRefResults(sec, term, label, ctx) {
   remember(label || term);

@@ -37,15 +37,19 @@ const HIDE_RULES = {
   gay: { label: 'Gay (male / male)', re: /\b(gay|yaoi|bara|males only|male on male)\b/i },
   futa: { label: 'Futa', re: /futa|futanari|dickgirl/i },
   furry: { label: 'Furry', re: /furr(y|ies)|anthro|yiff/i },
+  trans: { label: 'Trans / femboy / trap', re: /\b(trans|transgender|trans_woman|trans woman|transwoman|shemale|tgirl|t_girl|ladyboy|newhalf|trap|otoko_no_ko|otoko no ko|femboy|sissy|crossdressing|crossdresser|crossdress|tranny|futa_on_male)\b/i },
+  // Single images only (Observe, Find, Discover, art sites, real photos); albums in Browse aren't affected.
+  men: { label: 'Men & penises', note: 'in Observe, Find, Discover and art sites', imagesOnly: true,
+    re: /\b(penis|penises|large_penis|large penis|huge_penis|huge penis|cock|cocks|dick|dicks|testicles|erection|1boy|2boys|3boys|4boys|5boys|6\+boys|multiple_boys|multiple boys|male_focus|male focus|fellatio|handjob|irrumatio|deepthroat|cumshot|ejaculation|bulge|hetero|penetration|male|males|men|guy|guys|boy|boys|solo_male|solo male|blowjob|bbc|bwc|gay)\b/i },
 };
-const prefs = () => ({ show: { gay: false, futa: false, furry: false }, hideTags: [], mangaMode: 'rtl', compression: 'lossless', realRefs: true, realMen: false, ...store.get('ldl_prefs', {}) });
+const prefs = () => ({ show: { gay: false, futa: false, furry: false }, hideTags: [], mangaMode: 'rtl', compression: 'lossless', realRefs: true, ...store.get('ldl_prefs', {}) });
 const setPrefs = (p) => store.set('ldl_prefs', p);
 
 // Always blocked, on every site, and not adjustable: anything involving minors.
 export const BLOCKED = /\b(loli|lolicon|shota|shotacon|toddlercon|toddler|child|children|kid|kids|underage|minor|young_girl|young_boy|little_girl|little_boy|young|preteen|teen|teenage|aged_down|baby|infant|elementary|middle_school|cub)\b/i;
 
 // Returns why an album is hidden ('Gay', 'tag: x', ...) or null if it should be shown.
-function hiddenReason(album, p = prefs(), { allowReal = false } = {}) {
+function hiddenReason(album, p = prefs(), { allowReal = false, images = false } = {}) {
   const labels = [...(album.audiences || []), ...(album.genres || []), ...(album.tags || [])];
   if (labels.some((l) => BLOCKED.test(String(l).replace(/[\s-]+/g, '_')))) return 'Blocked content';
   // Only drawn / animated / artwork: real-life photo albums are never shown.
@@ -55,6 +59,7 @@ function hiddenReason(album, p = prefs(), { allowReal = false } = {}) {
     if (labels.some((l) => /^(photo_\(medium\)|real_life|photo|cosplay_photo|real people)$/i.test(String(l).replace(/\s+/g, '_')))) return 'Real photos';
   }
   for (const [key, rule] of Object.entries(HIDE_RULES)) {
+    if (rule.imagesOnly && !images) continue;
     if (!p.show[key] && labels.some((l) => rule.re.test(l))) return rule.label;
   }
   const extra = p.hideTags.map((t) => t.toLowerCase());
@@ -538,9 +543,8 @@ async function renderSettings() {
     </div>
     <div class="box">
       <h3>Show these (hidden by default)</h3>
-      ${Object.entries(HIDE_RULES).map(([k, r]) => `<label class="switch"><input type="checkbox" data-show="${k}" ${p.show[k] ? 'checked' : ''}><span>${r.label}</span></label>`).join('')}
+      ${Object.entries(HIDE_RULES).map(([k, r]) => `<label class="switch"><input type="checkbox" data-show="${k}" ${p.show[k] ? 'checked' : ''}><span>${r.label}${r.note ? `<br><span class="muted small">${r.note}</span>` : ''}</span></label>`).join('')}
       <label class="switch"><input type="checkbox" id="realRefs" ${p.realRefs ? 'checked' : ''}><span>Real photo references<br><span class="muted small">photos from RedGIFs (luscious real albums as backup), only in Find and Observe, never in Browse</span></span></label>
-      <label class="switch"><input type="checkbox" id="realMen" ${p.realMen ? 'checked' : ''}><span>Include men in real photos<br><span class="muted small">off: only photos of women, nothing tagged with a man or penis</span></span></label>
       <p class="muted small">Anything involving minors is always blocked on every site.</p>
       <label style="margin-top:12px">Also hide albums with these tags (comma separated)</label>
       <input id="hideTags" value="${esc(p.hideTags.join(', '))}" placeholder="e.g. guro, scat">
@@ -585,7 +589,6 @@ async function renderSettings() {
   }
   app.querySelectorAll('[data-show]').forEach((c) => (c.onchange = () => { const x = prefs(); x.show[c.dataset.show] = c.checked; setPrefs(x); }));
   U.renderUpdateBox($('#updBox'));
-  $('#realMen').onchange = (e) => { const x = prefs(); x.realMen = e.target.checked; setPrefs(x); };
   $('#realRefs').onchange = (e) => { const x = prefs(); x.realRefs = e.target.checked; setPrefs(x); };
   $('#hideTags').onchange = (e) => { const x = prefs(); x.hideTags = e.target.value.split(',').map((t) => t.trim()).filter(Boolean); setPrefs(x); };
   $('#mangaMode').onchange = (e) => { const x = prefs(); x.mangaMode = e.target.value; setPrefs(x); };
